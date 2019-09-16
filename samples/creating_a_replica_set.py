@@ -1,6 +1,7 @@
-from testaccio import KubeObject
+from kubeobject import KubeObject
 from kubernetes import config
 
+# kubeobject does not handle loading Kubernetes configuration
 config.load_kube_config()
 
 print("Creating a new Replica Set")
