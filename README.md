@@ -15,7 +15,7 @@ print("Current phase is:", resource["status"]["phase"])
 resource.delete()
 print("Resource has been removed")
 
-print("Creating an custom resource from a yaml file")
+print("Creating a custom resource from a yaml file")
 resource = KubeObject.from_yaml("replica-set.yaml", "my-namespace")
 
 print("Waiting until custom resource reaches phase Running")

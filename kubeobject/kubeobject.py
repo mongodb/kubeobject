@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from kubernetes import client
 import time
 import yaml
@@ -18,13 +20,26 @@ class KubeObject:
         return KubeObject(obj)
 
     @classmethod
-    def create(cls, body, namespace):
+    def create(cls, body, namespace) -> KubeObject:
         """Creates a Custom Object."""
         api = client.CustomObjectsApi()
 
         id = KubeObject.__get_object_id(body)
         obj = api.create_namespaced_custom_object(
             id["group"], id["version"], namespace, id["plural"], body
+        )
+
+        return KubeObject(obj)
+
+    @classmethod
+    def update(cls, body, namespace) -> KubeObject:
+        if callable(namespace):
+            namespace = namespace()
+
+        api = client.CustomObjectsApi()
+        id = KubeObject.__get_object_id(body)
+        obj = api.patch_namespaced_custom_object(
+            id["group"], id["version"], namespace, id["plural"], id["name"], body
         )
 
         return KubeObject(obj)
@@ -63,11 +78,14 @@ class KubeObject:
             "namespace": namespace,
         }
 
-    def __getitem__(self, key):
-        return self.rest_object[key]
-
     def __init__(self, rest_object):
         self.rest_object = rest_object
+
+    def save(self):
+        tmpobj = KubeObject.update(
+            self.rest_object, self.rest_object["metadata"]["namespace"]
+        )
+        self.rest_object = tmpobj.rest_object
 
     def delete(self):
         """Removes this object form Kuberentes API"""
@@ -87,7 +105,7 @@ class KubeObject:
         )
         self.rest_object = tmpobj.rest_object
 
-    def wait_for_phase(self, phase):
+    def wait_for_phase(self, phase, timeout=240):
         """Waits until object reaches given state. The solution currently
         implemented is super simple and very similar to what we already have,
         but does the job well.
@@ -95,6 +113,8 @@ class KubeObject:
         # TODO: I would like to implement something based on async/await. I'm
         not sure why but I want.
         """
+        assert timeout > 0
+        wait = 5
         while True:
             self.reload()
             if "status" in self.rest_object.keys():
@@ -102,4 +122,19 @@ class KubeObject:
                 if current_phase == phase:
                     return True
 
-            time.sleep(5)
+            if timeout > 0:
+                timeout -= wait
+                time.sleep(wait)
+            else:
+                break
+
+    def reaches_phase(self, phase):
+        return self.wait_for_phase(phase)
+
+    def __getitem__(self, key):
+        """Mimics the behaviour of a dict. Gets []"""
+        return self.rest_object[key]
+
+    def __setitem__(self, key, val):
+        """Mimics the behaviour of a dict. Sets []"""
+        self.rest_object[key] = val
