@@ -1,0 +1,18 @@
+---
+apiVersion: mongodb.com/v1
+kind: MongoDB
+metadata:
+  name: my-replica-set
+spec:
+  members: 3
+  version: 3.6.9
+  type: ReplicaSet
+  project: my-project
+  credentials: my-credentials
+  logLevel: DEBUG
+  persistent: false
+  podSpec:
+    memory: 700M
+    memoryRequests: 300M
+    cpu: '0.5'
+    cpuRequests: '0.2'

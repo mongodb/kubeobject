@@ -1,0 +1,10 @@
+chardet==3.0.4
+jsonpatch==1.23
+kubernetes==10.0.1
+pymongo==3.7.1
+pytest==4.3.1
+PyYAML==5.1
+requests==2.22.0
+urllib3==1.25.3
+dnspython==1.16.0
+cryptography==2.7

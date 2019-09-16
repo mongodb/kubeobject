@@ -1,0 +1,76 @@
+* Skunkworks 2019 ::
+** Introduction
+The idea of this semester’s Skunkworks is to improve the E2E testing framework, with a goal of
+improving the productivity and the amount of fun we have writing tests. Or mission is to make our
+operator a strong offering from MongoDB and a pioneer in technologies and languages.
+** Story
+The E2E testing framework was started by me after the first public beta release of the operator, as
+I didn’t want to have to test it manually, I created a series of Python scripts that, using the
+Python Kubernetes client module would make a series of state changes to Kubernetes and check that
+everything reached the expected state. This was a simple idea that moved into a complex framework
+which is capable of testing the connectivity to mongod (using PyMongo) with plain connections, TLS,
+x509 certificates and such. It can generate and sign certificates using the KubeCA, can make changes
+to resources, create namespaces, etc.
+All of these changes have occurred in a very organic way with no organization and without a clear
+leadership or /design/. New features have been added in an /ad-hoc/ fashion and we have not agreed
+on /where does this belongs/. Some features have been added to the tests themselves, some into the
+KubernetesTester class, which grew into a set of interconnected functionality which is difficult to
+use. On top of that, we have created multiple Kubernetes Resources that we manage, besides Mongo
+Databases: Users and Ops Manager, which do not fit 100% in the original design.
+** What’s this project supposed to do
+For this year’s Skunkworks, I will be re-designing the E2E testing framework, taking into
+consideration everything we have learnt so far, and trying to put all the pieces together, with one
+theme:
++ Building E2E tests should be super easy, declarative and above all, fun.
+** Goals
+The goals for this week are the following
+
+*** Define an API for writting tests
+I will try to design an API following pytest principles as much as I can: resources will be
+fixtures, there will be /setup/ and /teardown/ functions.
+
+*** Build a ergonomic Kubernetes ORM
+Similiar to SQLAlchemy’s ORM, build a mechanism to use Kubernetes objects, any kind supported, with
+special care about CRDs. That will allow us to check the state of the objects at any given time,
+apply changes to it just by modifying some attribute and call /save()/ on it. I’ll also build a
+mechanism for waiting for states in a asynchronous way, avoiding excesive polling.
+
+
+** Stretch Goals
+
+*** Design a mechanism to build images
+Using Kaniko
+
+*** Test Runner Framework
+The runner framework should be able to run everything for the test, from creating a namespace to
+deploying and running the testing containers, and waiting for their execution. This is basically
+equivalent to replace our /e2e_tests.sh/ with a Python module specialized in this.
+
+** Subgoals
+
+*** Avoid OOP constructs (not sure this is a goal, but a tactic)
+Python modules will be used as tests containers and as isolation machinery, no more subclassing
+nonsense!
+
+*** Do not write not even 1 line of Bash
+Everything needs to be built using Python.
+
+* Skunkworks 2019 :: Design
+
+** Lifecycle of tests
+
+Implement proper /setup/ and /teardown/ mechanics, that are generic, work on a module level, and
+automatically remove all the objects created.
+
+** Auto generate clients for the Swagger defined CRDs
+
+We should have all the data we need for fully-fledged CRD client objects from the swagger
+defintion. We could easily write clients using the descriptions and even validate them.
+
++ *Check swagger API code generation*
+
+** An API For Writting Tests
+
+I maintain my original design about creating Kubernetes Objects in a declarative way and be able to
+check the state those objects are currently in. The objects should be created using fixtures, which
+in turn can be disposed and removed using the pytest framework’s lifecycle.
