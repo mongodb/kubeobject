@@ -50,13 +50,17 @@ class CustomObject:
         return CustomObject(obj)
 
     @classmethod
-    def from_yaml(cls, yaml_file, namespace):
-        """Creates a Custom Resource from a yaml file"""
-        with open(yaml_file, "r") as fd:
-            yaml_all = yaml.safe_load_all(fd.read())
+    def from_yaml(cls, yaml_file, namespace=None):
+        """Creates a Custom Resource from a yaml file or document"""
+        if not isinstance(yaml_file, dict):
+            with open(yaml_file, "r") as fd:
+                yaml_file = yaml.safe_load_all(fd.read())
+
+        if not isinstance(yaml_file, list):
+            yaml_file = [yaml_file]
 
         objs = []
-        for doc in yaml_all:
+        for doc in yaml_file:
             if namespace is None:
                 namespace = doc["metadata"]["namespace"]
 

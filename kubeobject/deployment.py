@@ -14,7 +14,13 @@ class Deployment:
         api = client.AppsV1Api()
         spec = client.V1DeploymentSpec(
             replicas=1,
+            selector=client.V1LabelSelector(
+                match_labels={"app": name},
+            ),
             template=client.V1PodTemplateSpec(
+                metadata=client.V1ObjectMeta(
+                    labels={"app": name},
+                ),
                 spec=client.V1PodSpec(
                     service_account_name=service_account.name,
                     containers=[
