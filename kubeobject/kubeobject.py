@@ -121,8 +121,11 @@ class CustomObject:
         wait = 5
         while True:
             self.reload()
-            if fn(self):
-                return True
+            try:
+                if fn(self):
+                    return True
+            except Exception:
+                pass
 
             if timeout > 0:
                 timeout -= wait

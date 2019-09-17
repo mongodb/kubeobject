@@ -47,6 +47,10 @@ class Deployment:
                                     value="quay.io/mongodb/mongodb-enterprise-database:1.2.3"
                                 ),
                                 client.V1EnvVar(
+                                    name="IMAGE_PULL_POLICY",
+                                    value="Always"
+                                ),
+                                client.V1EnvVar(
                                     name="OPS_MANAGER_IMAGE_REPOSITORY",
                                     value="",
                                 ),
