@@ -21,6 +21,6 @@ resource = KubeObject.from_yaml("replica-set.yaml", "my-namespace")
 print("Waiting until custom resource reaches phase Running")
 resource.wait_for_phase("Running")
 
-print("Custom resource has reached "Running" phase")
+print("Custom resource has reached Running phase")
 resource.delete()
 ```

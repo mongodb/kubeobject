@@ -110,17 +110,16 @@ class KubeObject:
         implemented is super simple and very similar to what we already have,
         but does the job well.
 
-        # TODO: I would like to implement something based on async/await. I'm
-        not sure why but I want.
+        # TODO: Maybe an implementation based on futures will be better in this case?
         """
-        assert timeout > 0
+        return self.wait_for(lambda s: s["status"].get("phase") == phase)
+
+    def wait_for(self, fn, timeout=240):
         wait = 5
         while True:
             self.reload()
-            if "status" in self.rest_object.keys():
-                current_phase = self["status"].get("phase", "")
-                if current_phase == phase:
-                    return True
+            if fn(self):
+                return True
 
             if timeout > 0:
                 timeout -= wait
@@ -130,6 +129,9 @@ class KubeObject:
 
     def reaches_phase(self, phase):
         return self.wait_for_phase(phase)
+
+    def abandons_phase(self, phase):
+        return self.wait_for(lambda s: s["status"].get("phase") != phase)
 
     def __getitem__(self, key):
         """Mimics the behaviour of a dict. Gets []"""
