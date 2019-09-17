@@ -10,11 +10,11 @@ from string import ascii_lowercase, digits
 from kubernetes import client
 
 
-class KubeObject:
+class CustomObject:
     """Only supports custom objects from now."""
 
     @classmethod
-    def load(cls, group, version, plural, name, namespace):
+    def load(cls, group, version, plural, name, namespace) -> CustomObject:
         """Loads a Kubernetes Object from the API."""
         api = client.CustomObjectsApi()
 
@@ -22,32 +22,32 @@ class KubeObject:
         obj = api.get_namespaced_custom_object(group, version, namespace, plural, name)
 
         # Return a new instance of Kube Object from the API.
-        return KubeObject(obj)
+        return CustomObject(obj)
 
     @classmethod
-    def create(cls, body, namespace) -> KubeObject:
+    def create(cls, body, namespace) -> CustomObject:
         """Creates a Custom Object."""
         api = client.CustomObjectsApi()
 
-        id = KubeObject.__get_object_id(body)
+        id = CustomObject.__get_object_id(body)
         obj = api.create_namespaced_custom_object(
             id["group"], id["version"], namespace, id["plural"], body
         )
 
-        return KubeObject(obj)
+        return CustomObject(obj)
 
     @classmethod
-    def update(cls, body, namespace) -> KubeObject:
+    def update(cls, body, namespace) -> CustomObject:
         if callable(namespace):
             namespace = namespace()
 
         api = client.CustomObjectsApi()
-        id = KubeObject.__get_object_id(body)
+        id = CustomObject.__get_object_id(body)
         obj = api.patch_namespaced_custom_object(
             id["group"], id["version"], namespace, id["plural"], id["name"], body
         )
 
-        return KubeObject(obj)
+        return CustomObject(obj)
 
     @classmethod
     def from_yaml(cls, yaml_file, namespace):
@@ -60,7 +60,7 @@ class KubeObject:
             if namespace is None:
                 namespace = doc["metadata"]["namespace"]
 
-            objs.append(KubeObject.create(doc, namespace))
+            objs.append(CustomObject.create(doc, namespace))
 
         if len(objs) == 1:
             return objs[0]
@@ -83,11 +83,11 @@ class KubeObject:
             "namespace": namespace,
         }
 
-    def __init__(self, rest_object, **kwargs):
+    def __init__(self, rest_object):
         self.rest_object = rest_object
 
     def save(self):
-        tmpobj = KubeObject.update(
+        tmpobj = CustomObject.update(
             self.rest_object, self.rest_object["metadata"]["namespace"]
         )
         self.rest_object = tmpobj.rest_object
@@ -96,7 +96,7 @@ class KubeObject:
         """Removes this object form Kuberentes API"""
         api = client.CustomObjectsApi()
         body = client.V1DeleteOptions()
-        id = KubeObject.__get_object_id(self.rest_object)
+        id = CustomObject.__get_object_id(self.rest_object)
 
         api.delete_namespaced_custom_object(
             id["group"], id["version"], id["namespace"], id["plural"], id["name"], body
@@ -105,7 +105,7 @@ class KubeObject:
     def reload(self):
         """Reloads the object from the Kubernetes API."""
         # TODO: this is really ugly
-        tmpobj = KubeObject.load(**KubeObject.__get_object_id(self.rest_object))
+        tmpobj = CustomObject.load(**CustomObject.__get_object_id(self.rest_object))
         self.rest_object = tmpobj.rest_object
 
     def wait_for_phase(self, phase, timeout=240):
@@ -141,6 +141,10 @@ class KubeObject:
 
     def __setitem__(self, key, val):
         self.rest_object[key] = val
+
+    def __str__(self):
+        id = CustomObject.__get_object_id(self.rest_object)
+        return "{}.{}/{}".format(id["plural"], id["group"], id["name"])
 
 
 class KubeObjectGeneric:
@@ -207,6 +211,9 @@ class ConfigMap(KubeObjectGeneric):
             self.name, self.namespace, configmap
         )
 
+    def __str__(self):
+        return "configmap/{}".format(self.name)
+
 
 class Secret(KubeObjectGeneric):
     @classmethod
@@ -242,6 +249,9 @@ class Secret(KubeObjectGeneric):
             self.name, self.namespace, secret
         )
 
+    def __str__(self):
+        return "secret/{}".format(self.name)
+
 
 class Namespace(KubeObjectGeneric):
     @classmethod
@@ -260,6 +270,9 @@ class Namespace(KubeObjectGeneric):
         body = client.V1DeleteOptions()
 
         return api.delete_namespace(self.name, body=body)
+
+    def __str__(self):
+        return "namespace/{}".format(self.name)
 
 
 def generate_random_name(prefix="", suffix="", size=63):

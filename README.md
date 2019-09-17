@@ -27,7 +27,7 @@ print("Custom resource has reached Running phase")
 resource.delete()
 ```
 
-## Creating a Namespace and ConfigMaps and Secrets on it
+## Creating a Namespace with a ConfigMap and a Secret on it
 
 ``` python
 from kubeobject import Namespace, Secret, ConfigMap, generate_random_name
