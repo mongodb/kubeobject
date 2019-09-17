@@ -4,7 +4,9 @@ _Easily manage Kubernetes Objects_
 
 KubeObject allows for the management of Kubernetes using a simple object mapper to Rest API objects.
 
-# Example 1 -- Creating and updating a Custom Object
+# Examples
+
+## Creating and updating a Custom Object
 
 ``` python
 from kubeobject import KubeObject
@@ -25,7 +27,7 @@ print("Custom resource has reached Running phase")
 resource.delete()
 ```
 
-# Example 2 -- Creating a Namespace and ConfigMaps and Secrets on it
+## Creating a Namespace and ConfigMaps and Secrets on it
 
 ``` python
 from kubeobject import Namespace, Secret, ConfigMap, generate_random_name

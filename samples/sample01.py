@@ -16,6 +16,9 @@ print(configmap.data)
 configmap.update({"key1": "new_value"})
 print("ConfigMap Updated: ", configmap.data)
 
+configmap_read_from_api = ConfigMap.read("my-testing-cm", namespace.name)
+print("Got the configmap: {}/{}".format(configmap.name, configmap.namespace))
+
 print("ConfigMap Deleted")
 configmap.delete()
 
