@@ -1,1 +1,1 @@
-from .kubeobject import KubeObject
+from .kubeobject import *
