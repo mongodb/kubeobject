@@ -1,0 +1,7 @@
+---
+apiVersion: kubeobject.com/v1
+kind: Dummy
+metadata:
+  name: my-dummy-object
+spec:
+  answer: "fourty two"

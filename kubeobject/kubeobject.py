@@ -3,6 +3,7 @@ from __future__ import annotations
 import random
 import time
 import yaml
+import types
 
 from base64 import b64decode
 from string import ascii_lowercase, digits
@@ -25,16 +26,20 @@ class CustomObject:
         return CustomObject(obj)
 
     @classmethod
-    def create(cls, body, namespace) -> CustomObject:
+    def create(cls, body, namespace, plural=None) -> CustomObject:
         """Creates a Custom Object."""
         api = client.CustomObjectsApi()
 
         id = CustomObject.__get_object_id(body)
+
+        if plural is None:
+            plural = id["plural"]
+
         obj = api.create_namespaced_custom_object(
-            id["group"], id["version"], namespace, id["plural"], body
+            id["group"], id["version"], namespace, plural, body
         )
 
-        return CustomObject(obj)
+        return CustomObject(obj, plural)
 
     @classmethod
     def update(cls, body, namespace) -> CustomObject:
@@ -50,13 +55,13 @@ class CustomObject:
         return CustomObject(obj)
 
     @classmethod
-    def from_yaml(cls, yaml_file, namespace=None):
+    def from_yaml(cls, yaml_file, namespace=None, plural=None):
         """Creates a Custom Resource from a yaml file or document"""
         if not isinstance(yaml_file, dict):
             with open(yaml_file, "r") as fd:
                 yaml_file = yaml.safe_load_all(fd.read())
 
-        if not isinstance(yaml_file, list):
+        if not isinstance(yaml_file, types.GeneratorType):
             yaml_file = [yaml_file]
 
         objs = []
@@ -64,7 +69,7 @@ class CustomObject:
             if namespace is None:
                 namespace = doc["metadata"]["namespace"]
 
-            objs.append(CustomObject.create(doc, namespace))
+            objs.append(CustomObject.create(doc, namespace, plural))
 
         if len(objs) == 1:
             return objs[0]
@@ -74,10 +79,22 @@ class CustomObject:
     @classmethod
     def __get_object_id(self, doc):
         """Returns group, version, namespace, plural, name for the current object"""
+
         group, version = doc["apiVersion"].split("/")
         plural = doc["kind"].lower()
         name = doc["metadata"]["name"]
         namespace = doc["metadata"].get("namespace", "")
+
+        # At creation there's no selfLink!
+        # The plural is not here, but it is on the selfLink
+        if not hasattr(self, 'plural'):
+            if "selfLink" in doc["metadata"]:
+                self_link = doc["metadata"]["selfLink"]
+                plural0 = self_link.split("/")[-2]
+                if plural != plural0:
+                    plural = plural0
+        else:
+            plural = self.plural
 
         return {
             "group": group,
@@ -87,8 +104,10 @@ class CustomObject:
             "namespace": namespace,
         }
 
-    def __init__(self, rest_object):
+    def __init__(self, rest_object, plural=None):
         self.rest_object = rest_object
+        if plural is not None:
+            self.plural = plural
 
     def save(self):
         tmpobj = CustomObject.update(
@@ -267,6 +286,16 @@ class Namespace(KubeObjectGeneric):
         namespace = client.V1Namespace(metadata=client.V1ObjectMeta(name=name))
 
         return Namespace(name, api.create_namespace(namespace))
+
+    @classmethod
+    def exists(cls, name):
+        api = client.CoreV1Api()
+        try:
+            api.read_namespace(name)
+        except client.rest.ApiException:
+            return False
+
+        return True
 
     def __init__(self, name, backing_obj):
         self.name = name

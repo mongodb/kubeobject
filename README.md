@@ -8,23 +8,36 @@ KubeObject allows for the management of Kubernetes using a simple object mapper 
 
 ## Creating and updating a Custom Object
 
+* Make sure you apply the `deploy/dummy.crd.yaml` file before trying this!
+
 ``` python
-from kubeobject import KubeObject
+from kubeobject import CustomObject, Namespace
+from kubernetes import config
 
-resource = KubeObject.load("mongodb.com", "v1", "mongodb", "my-replica-set", "my-namespace")
-print("Current phase is:", resource["status"]["phase"])
+config.load_kube_config()
 
-resource.delete()
-print("Resource has been removed")
+namespace_name = "my-namespace"
+
+if not Namespace.exists(namespace_name):
+    print("Namespace does not exist, creating it")
+    Namespace.create(namespace_name)
 
 print("Creating a custom resource from a yaml file")
-resource = KubeObject.from_yaml("replica-set.yaml", "my-namespace")
 
-print("Waiting until custom resource reaches phase Running")
-resource.wait_for_phase("Running")
+# TODO: replace the following `plural` attribute by fetching this plural name
+# from CRD API.
+CustomObject.from_yaml("deploy/dummy.yaml", namespace=namespace_name, plural="dummies")
 
-print("Custom resource has reached Running phase")
-resource.delete()
+dummy = CustomObject.load("kubeobject.com", "v1", "dummies", "my-dummy-object", namespace_name)
+print("Our dummy object:", dummy["metadata"]["name"])
+
+print("And the answer is:", dummy["spec"]["answer"])
+
+dummy["status"] = {"message": "You have been updated"}
+dummy.save()
+
+dummy.delete()
+print("Resource has been removed")
 ```
 
 ## Creating a Namespace with a ConfigMap and a Secret on it
