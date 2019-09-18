@@ -8,12 +8,100 @@ import types
 from base64 import b64decode
 from string import ascii_lowercase, digits
 
+from typing import Optional
+
 from kubernetes import client
 
 
-class CustomObject:
-    """Only supports custom objects from now."""
+class CustomObject0:
+    def __init__(self, name: str, namespace: str, plural: str = None, kind: str = None, api_version: str = None):
+        self.name = name
+        self.namespace = namespace
+        self.plural = plural
+        self.api_version = api_version
+        self.kind = kind
+        self.saved = False
 
+    def load(self) -> CustomObject0:
+        """Loads this object from the API."""
+        api = client.CustomObjectsApi()
+
+        crd = get_crd_names(plural=self.plural, kind=self.kind, api_version=self.api_version)
+
+        obj = api.get_namespaced_custom_object(
+            crd.spec.group,
+            crd.spec.version,
+            self.namespace,
+            crd.spec.names.plural,
+            self.name,
+        )
+
+        self.backing_obj = obj
+        self.saved = True
+
+        return self
+
+    def save(self) -> CustomObject0:
+        api = client.CustomObjectsApi()
+
+        crd = get_crd_names(plural=self.plural, kind=self.kind, api_version=self.api_version)
+
+        if not hasattr(self, 'backing_obj'):
+            self.backing_obj = {
+                "kind": crd.spec.names.kind,
+                "apiVersion": "{}/{}".format(crd.spec.group, crd.spec.version),
+                "metadata": {"name": self.name, "namespace": self.namespace},
+            }
+
+        obj = api.create_namespaced_custom_object(
+            crd.spec.group,
+            crd.spec.version,
+            self.namespace,
+            crd.spec.names.plural,
+            self.backing_obj,
+        )
+
+        self.backing_obj = obj
+        self.saved = True
+
+        return self
+
+    @classmethod
+    def from_yaml(self, yaml_file, name=None, namespace=None):
+        doc = yaml.safe_load(open(yaml_file))
+
+        if name is None:
+            name = doc["metadata"]["name"]
+        else:
+            doc["metadata"]["name"] = name
+
+        if namespace is None:
+            namespace = doc["metadata"]["namespace"]
+        else:
+            doc["metadata"]["namespace"] = namespace
+
+        kind = doc["kind"]
+        api_version = doc["apiVersion"]
+
+        obj = CustomObject0(name, namespace, kind=kind, api_version=api_version)
+        obj.saved = False
+        obj.backing_obj = doc
+
+        # Save the yaml definition to when user wants to save
+        # it will be interesting to see how to interact with this object while it has not been saved
+        # with __getitem__ and __setitem__ functions.
+        # obj.body_to_save = doc
+
+        return obj
+
+    def __getitem__(self, key):
+        return self.backing_obj[key]
+
+    def __setitem__(self, key, val):
+        self.backing_obj[key] = val
+
+
+class CustomObject:
     @classmethod
     def load(cls, group, version, plural, name, namespace) -> CustomObject:
         """Loads a Kubernetes Object from the API."""
@@ -87,7 +175,7 @@ class CustomObject:
 
         # At creation there's no selfLink!
         # The plural is not here, but it is on the selfLink
-        if not hasattr(self, 'plural'):
+        if not hasattr(self, "plural"):
             if "selfLink" in doc["metadata"]:
                 self_link = doc["metadata"]["selfLink"]
                 plural0 = self_link.split("/")[-2]
@@ -329,3 +417,37 @@ def generate_random_name(prefix="", suffix="", size=63) -> str:
         body = [random.choice(ascii_lowercase)] + body
 
     return prefix + "".join(body) + suffix
+
+
+def get_crd_names(plural=None, kind=None, api_version=None) -> Optional[dict]:
+    """Gets the names, group and version by the identifier."""
+    api = client.ApiextensionsV1beta1Api()
+
+    if plural == kind == api_version is None:
+        return None
+
+    group = version = ""
+    if api_version is not None:
+        group, version = api_version.split("/")
+
+    crds = api.list_custom_resource_definition()
+    for crd in crds.items:
+        found = True
+        if group != "":
+            if crd.spec.group != group:
+                found = False
+
+        if version != "":
+            if crd.spec.version != version:
+                found = False
+
+        if kind is not None:
+            if crd.spec.names.kind != kind:
+                found = False
+
+        if plural is not None:
+            if crd.spec.names.plural != plural:
+                found = False
+
+        if found:
+            return crd

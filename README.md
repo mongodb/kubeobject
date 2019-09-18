@@ -4,6 +4,33 @@ _Easily manage Kubernetes Objects_
 
 KubeObject allows for the management of Kubernetes using a simple object mapper to Rest API objects.
 
+## What about a better API?
+
+``` python
+from kubeobject import CustomObject
+
+# This is how you load objects from the API
+
+# Load a CustomObject from given api_version and plural
+obj = CustomObject0("my-dummy-object", "my-namespace", api_version="kubeobject.com/v1", plural="dummies").load()
+
+# Load a CustomObject from given kind and api_version
+obj = CustomObject0("my-dummy-object", "my-namespace", kind="Dummy", api_version="kubeobject.com/v1").load()
+
+# This is how you create objects from the API
+obj = CustomObject0("name", "my-namespace", api_version="kubeobject.com/v1", plural="dummies").save()
+obj = CustomObject0.from_yaml("yaml_file.yaml", "my-namespace").save()
+
+# And finally, this is how you read a YAML file, apply changes to it and then create with your changes:
+obj = CustomObject0.from_yaml("yaml_file.yaml", "my-namespace")
+obj["spec"]["answer"] = "The correct anser is 42"
+obj.save()
+
+obj.saved == True # this is true!
+
+# All of them return an initialized CustomObject() (unless save() raises an exception)
+```
+
 # Examples
 
 ## Creating and updating a Custom Object
@@ -20,7 +47,7 @@ namespace_name = "my-namespace"
 
 if not Namespace.exists(namespace_name):
     print("Namespace does not exist, creating it")
-    Namespace.create(namespace_name)
+    namespace = Namespace.create(namespace_name)
 
 print("Creating a custom resource from a yaml file")
 
@@ -38,6 +65,10 @@ dummy.save()
 
 dummy.delete()
 print("Resource has been removed")
+
+namespace.delete()
+
+
 ```
 
 ## Creating a Namespace with a ConfigMap and a Secret on it
