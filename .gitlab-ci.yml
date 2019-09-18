@@ -6,5 +6,5 @@ test:
   script:
   - apt-get update -qy
   - apt-get install -y python-dev python-pip
-  - pip install -r requirements-dev.text
+  - pip install -r requirements-dev.txt
   - pytest
