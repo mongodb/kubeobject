@@ -4,9 +4,11 @@ image:
 stages:
 - test
 
+before_script:
+- pip install -r requirements-dev.txt
+- python setup.py install
+
 test:
   stage: test
   script:
-  - pip install -r requirements-dev.txt
-  - python setup.py install
   - pytest
