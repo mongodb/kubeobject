@@ -1,10 +1,11 @@
+image:
+  name: python:3.7-slim
+
 stages:
 - test
 
 test:
   stage: test
   script:
-  - apt-get update -qy
-  - apt-get install -y python-dev python-pip
   - pip install -r requirements-dev.txt
   - pytest
