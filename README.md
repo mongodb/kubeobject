@@ -24,7 +24,7 @@ obj = CustomObject.from_yaml("yaml_file.yaml", "my-namespace").create()
 # And finally, this is how you read a YAML file, apply changes to it and then create with your changes:
 obj = CustomObject.from_yaml("yaml_file.yaml", "my-namespace")
 obj["spec"]["answer"] = "The correct anser is 42"
-obj.update()
+obj.create()
 
 obj.auto_save = True
 obj["spec"]["newField"] = "this is a new value"  # and will be auto-saved!
@@ -54,8 +54,6 @@ if not Namespace.exists(namespace_name):
 
 print("Creating a custom resource from a yaml file")
 
-# TODO: replace the following `plural` attribute by fetching this plural name
-# from CRD API.
 CustomObject.from_yaml("deploy/dummy.yaml", "my-namespace").load()
 
 dummy = CustomObject("my-dummy-object", namespace_name, api_version="dummy.com/v1", plural="dummies").create()
