@@ -36,7 +36,8 @@ def test_custom_object_creation(mocked_get_crd_names, mocked_client):
 
 
 @mock.patch("kubeobject.kubeobject.client.CustomObjectsApi")
-def test_custom_object_read_from_disk(mocked_client):
+@mock.patch("kubeobject.kubeobject.get_crd_names", return_value=mocked_crd_return_value())
+def test_custom_object_read_from_disk(mocked_get_crd_names, mocked_client):
     mocked_client.return_value = mocked_custom_api()
     yaml_data = """
 ---

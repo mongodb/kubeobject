@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 import random
 import yaml
 
@@ -17,6 +18,8 @@ class CustomObject:
         self.namespace = namespace
         self.plural = plural
         self.api_version = api_version
+        if api_version is not None:
+            self.group, self.version = api_version.split("/")
         self.kind = kind
         self.saved = False
         self.auto_save = False
@@ -89,7 +92,7 @@ class CustomObject:
         return self
 
     @classmethod
-    def from_yaml(self, yaml_file, name=None, namespace=None):
+    def from_yaml(cls, yaml_file, name=None, namespace=None):
         doc = yaml.safe_load(open(yaml_file))
 
         if name is None:
@@ -104,8 +107,9 @@ class CustomObject:
 
         kind = doc["kind"]
         api_version = doc["apiVersion"]
+        crd = get_crd_names(kind=kind, api_version=api_version)
 
-        obj = CustomObject(name, namespace, kind=kind, api_version=api_version)
+        obj = CustomObject(name, namespace, kind=kind, api_version=api_version, plural=crd.spec.names.plural)
         obj.saved = False
         obj.backing_obj = doc
 
@@ -118,6 +122,41 @@ class CustomObject:
         api.delete_namespaced_custom_object(
             self.group, self.version, self.namespace, self.plural, self.name, body
         )
+
+    def reload(self):
+        """Reloads the object from the Kubernetes API."""
+        return self.load()
+
+    def wait_for_phase(self, phase, timeout=240):
+        """Waits until object reaches given state. The solution currently
+        implemented is super simple and very similar to what we already have,
+        but does the job well.
+
+        # TODO: Maybe an implementation based on futures will be better in this case?
+        """
+        return self.wait_for(lambda s: s["status"].get("phase") == phase)
+
+    def wait_for(self, fn, timeout=240):
+        wait = 5
+        while True:
+            self.reload()
+            try:
+                if fn(self):
+                    return True
+            except Exception:
+                pass
+
+            if timeout > 0:
+                timeout -= wait
+                time.sleep(wait)
+            else:
+                break
+
+    def reaches_phase(self, phase):
+        return self.wait_for_phase(phase)
+
+    def abandons_phase(self, phase):
+        return self.wait_for(lambda s: s["status"].get("phase") != phase)
 
     def __getitem__(self, key):
         return self.backing_obj[key]
