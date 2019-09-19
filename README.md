@@ -4,6 +4,36 @@ _Easily manage Kubernetes Objects_
 
 KubeObject allows for the management of Kubernetes using a simple object mapper to Rest API objects.
 
+## What about a better API?
+
+``` python
+from kubeobject import CustomObject
+
+# This is how you load objects from the API
+
+# Load a CustomObject from given api_version and plural
+obj = CustomObject("my-dummy-object", "my-namespace", api_version="kubeobject.com/v1", plural="dummies").load()
+
+# Load a CustomObject from given kind and api_version
+obj = CustomObject("my-dummy-object", "my-namespace", kind="Dummy", api_version="kubeobject.com/v1").load()
+
+# This is how you create objects from the API
+obj = CustomObject("name", "my-namespace", api_version="kubeobject.com/v1", plural="dummies").create()
+obj = CustomObject.from_yaml("yaml_file.yaml", "my-namespace").create()
+
+# And finally, this is how you read a YAML file, apply changes to it and then create with your changes:
+obj = CustomObject.from_yaml("yaml_file.yaml", "my-namespace")
+obj["spec"]["answer"] = "The correct anser is 42"
+obj.update()
+
+obj.auto_save = True
+obj["spec"]["newField"] = "this is a new value"  # and will be auto-saved!
+
+obj.saved == True # this is true!
+
+# All of them return an initialized CustomObject() (unless save() raises an exception)
+```
+
 # Examples
 
 ## Creating and updating a Custom Object
@@ -20,24 +50,28 @@ namespace_name = "my-namespace"
 
 if not Namespace.exists(namespace_name):
     print("Namespace does not exist, creating it")
-    Namespace.create(namespace_name)
+    namespace = Namespace.create(namespace_name)
 
 print("Creating a custom resource from a yaml file")
 
 # TODO: replace the following `plural` attribute by fetching this plural name
 # from CRD API.
-CustomObject.from_yaml("deploy/dummy.yaml", namespace=namespace_name, plural="dummies")
+CustomObject.from_yaml("deploy/dummy.yaml", "my-namespace").load()
 
-dummy = CustomObject.load("kubeobject.com", "v1", "dummies", "my-dummy-object", namespace_name)
+dummy = CustomObject("my-dummy-object", namespace_name, api_version="dummy.com/v1", plural="dummies").create()
 print("Our dummy object:", dummy["metadata"]["name"])
 
 print("And the answer is:", dummy["spec"]["answer"])
 
 dummy["status"] = {"message": "You have been updated"}
-dummy.save()
+dummy.update()
 
 dummy.delete()
 print("Resource has been removed")
+
+namespace.delete()
+
+
 ```
 
 ## Creating a Namespace with a ConfigMap and a Secret on it

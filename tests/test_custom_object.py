@@ -1,4 +1,5 @@
 from unittest import mock
+from types import SimpleNamespace
 
 from kubeobject.kubeobject import CustomObject
 
@@ -14,28 +15,23 @@ def mocked_custom_api():
     return MockedApi
 
 
+def mocked_crd_return_value():
+    return SimpleNamespace(
+        spec=SimpleNamespace(
+            group="dummy.com", version="v1",
+            names=SimpleNamespace(plural="dummies", kind="Dummy"),
+        )
+    )
+
+
 @mock.patch("kubeobject.kubeobject.client.CustomObjectsApi")
-def test_custom_object_creation(mocked_client):
+@mock.patch("kubeobject.kubeobject.get_crd_names", return_value=mocked_crd_return_value())
+def test_custom_object_creation(mocked_get_crd_names, mocked_client):
     mocked_client.return_value = mocked_custom_api()
 
-    custom = CustomObject.load("dummy.com", "v1", "dummies", "my-dummy-object", "my-dummy-namespace")
+    custom = CustomObject("my-dummy-object", "my-dummy-namespace", kind="Dummy", api_version="dummy.com/v1").create()
 
     # Test that __getitem__ is well implemented
-    assert custom["name"] == "my-dummy-object"
-
-
-@mock.patch("kubeobject.kubeobject.client.CustomObjectsApi")
-def test_custom_object_from_yaml(mocked_client):
-    mocked_client.return_value = mocked_custom_api()
-
-    file_dict = {
-        "apiVersion": "dummy.com/v1",
-        "plural": "dummies",
-        "kind": "Dummy",
-        "metadata": {"name": "my-dummy-object", "namespace": "my-dummy-namespace"}
-    }
-    custom = CustomObject.from_yaml(file_dict)
-
     assert custom["name"] == "my-dummy-object"
 
 
@@ -50,21 +46,10 @@ kind: Dummy
 metadata:
   name: my-dummy-object0
   namespace: my-dummy-namespace
-
----
-apiVersion: dummy.com/v1
-plural: dummies
-kind: Dummy
-metadata:
-  name: my-dummy-object1
-  namespace: my-dummy-namespace
 """
 
     with mock.patch("kubeobject.kubeobject.open", mock.mock_open(read_data=yaml_data), create=True) as m:
         custom = CustomObject.from_yaml("some-file.yaml")
-        m.assert_called_once_with("some-file.yaml", "r")
+        m.assert_called_once_with("some-file.yaml")
 
-        assert isinstance(custom, list)
-        assert len(custom) == 2
-
-        assert custom[0]["name"] == "my-dummy-object0"
+        assert custom.name == "my-dummy-object0"
