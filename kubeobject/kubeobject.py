@@ -1,9 +1,7 @@
 from __future__ import annotations
 
 import random
-import time
 import yaml
-import types
 
 from base64 import b64decode
 from string import ascii_lowercase, digits
@@ -13,7 +11,7 @@ from typing import Optional
 from kubernetes import client
 
 
-class CustomObject0:
+class CustomObject:
     def __init__(self, name: str, namespace: str, plural: str = None, kind: str = None, api_version: str = None):
         self.name = name
         self.namespace = namespace
@@ -21,8 +19,9 @@ class CustomObject0:
         self.api_version = api_version
         self.kind = kind
         self.saved = False
+        self.auto_save = False
 
-    def load(self) -> CustomObject0:
+    def load(self) -> CustomObject:
         """Loads this object from the API."""
         api = client.CustomObjectsApi()
 
@@ -41,7 +40,7 @@ class CustomObject0:
 
         return self
 
-    def save(self) -> CustomObject0:
+    def create(self) -> CustomObject:
         api = client.CustomObjectsApi()
 
         crd = get_crd_names(plural=self.plural, kind=self.kind, api_version=self.api_version)
@@ -52,12 +51,35 @@ class CustomObject0:
                 "apiVersion": "{}/{}".format(crd.spec.group, crd.spec.version),
                 "metadata": {"name": self.name, "namespace": self.namespace},
             }
+        else:
+            self.backing_obj["metadata"] = {"name": self.name, "namespace": self.namespace}
 
         obj = api.create_namespaced_custom_object(
             crd.spec.group,
             crd.spec.version,
             self.namespace,
             crd.spec.names.plural,
+            self.backing_obj,
+        )
+
+        self.backing_obj = obj
+        self.saved = True
+
+        return self
+
+    def update(self) -> CustomObject:
+        api = client.CustomObjectsApi()
+
+        crd = get_crd_names(plural=self.plural, kind=self.kind, api_version=self.api_version)
+
+        self.backing_obj["metadata"] = {"name": self.name, "namespace": self.namespace}
+
+        obj = api.patch_namespaced_custom_object(
+            crd.spec.group,
+            crd.spec.version,
+            self.namespace,
+            crd.spec.names.plural,
+            self.name,
             self.backing_obj,
         )
 
@@ -83,16 +105,19 @@ class CustomObject0:
         kind = doc["kind"]
         api_version = doc["apiVersion"]
 
-        obj = CustomObject0(name, namespace, kind=kind, api_version=api_version)
+        obj = CustomObject(name, namespace, kind=kind, api_version=api_version)
         obj.saved = False
         obj.backing_obj = doc
 
-        # Save the yaml definition to when user wants to save
-        # it will be interesting to see how to interact with this object while it has not been saved
-        # with __getitem__ and __setitem__ functions.
-        # obj.body_to_save = doc
-
         return obj
+
+    def delete(self):
+        api = client.CustomObjectsApi()
+        body = client.V1DeleteOptions()
+
+        api.delete_namespaced_custom_object(
+            self.group, self.version, self.namespace, self.plural, self.name, body
+        )
 
     def __getitem__(self, key):
         return self.backing_obj[key]
@@ -100,165 +125,8 @@ class CustomObject0:
     def __setitem__(self, key, val):
         self.backing_obj[key] = val
 
-
-class CustomObject:
-    @classmethod
-    def load(cls, group, version, plural, name, namespace) -> CustomObject:
-        """Loads a Kubernetes Object from the API."""
-        api = client.CustomObjectsApi()
-
-        # TODO: try errors from the API, retry
-        obj = api.get_namespaced_custom_object(group, version, namespace, plural, name)
-
-        # Return a new instance of Kube Object from the API.
-        return CustomObject(obj)
-
-    @classmethod
-    def create(cls, body, namespace, plural=None) -> CustomObject:
-        """Creates a Custom Object."""
-        api = client.CustomObjectsApi()
-
-        id = CustomObject.__get_object_id(body)
-
-        if plural is None:
-            plural = id["plural"]
-
-        obj = api.create_namespaced_custom_object(
-            id["group"], id["version"], namespace, plural, body
-        )
-
-        return CustomObject(obj, plural)
-
-    @classmethod
-    def update(cls, body, namespace) -> CustomObject:
-        if callable(namespace):
-            namespace = namespace()
-
-        api = client.CustomObjectsApi()
-        id = CustomObject.__get_object_id(body)
-        obj = api.patch_namespaced_custom_object(
-            id["group"], id["version"], namespace, id["plural"], id["name"], body
-        )
-
-        return CustomObject(obj)
-
-    @classmethod
-    def from_yaml(cls, yaml_file, namespace=None, plural=None):
-        """Creates a Custom Resource from a yaml file or document"""
-        if not isinstance(yaml_file, dict):
-            with open(yaml_file, "r") as fd:
-                yaml_file = yaml.safe_load_all(fd.read())
-
-        if not isinstance(yaml_file, types.GeneratorType):
-            yaml_file = [yaml_file]
-
-        objs = []
-        for doc in yaml_file:
-            if namespace is None:
-                namespace = doc["metadata"]["namespace"]
-
-            objs.append(CustomObject.create(doc, namespace, plural))
-
-        if len(objs) == 1:
-            return objs[0]
-
-        return objs
-
-    @classmethod
-    def __get_object_id(self, doc):
-        """Returns group, version, namespace, plural, name for the current object"""
-
-        group, version = doc["apiVersion"].split("/")
-        plural = doc["kind"].lower()
-        name = doc["metadata"]["name"]
-        namespace = doc["metadata"].get("namespace", "")
-
-        # At creation there's no selfLink!
-        # The plural is not here, but it is on the selfLink
-        if not hasattr(self, "plural"):
-            if "selfLink" in doc["metadata"]:
-                self_link = doc["metadata"]["selfLink"]
-                plural0 = self_link.split("/")[-2]
-                if plural != plural0:
-                    plural = plural0
-        else:
-            plural = self.plural
-
-        return {
-            "group": group,
-            "version": version,
-            "plural": plural,
-            "name": name,
-            "namespace": namespace,
-        }
-
-    def __init__(self, rest_object, plural=None):
-        self.rest_object = rest_object
-        if plural is not None:
-            self.plural = plural
-
-    def save(self):
-        tmpobj = CustomObject.update(
-            self.rest_object, self.rest_object["metadata"]["namespace"]
-        )
-        self.rest_object = tmpobj.rest_object
-
-    def delete(self):
-        """Removes this object form Kuberentes API"""
-        api = client.CustomObjectsApi()
-        body = client.V1DeleteOptions()
-        id = CustomObject.__get_object_id(self.rest_object)
-
-        api.delete_namespaced_custom_object(
-            id["group"], id["version"], id["namespace"], id["plural"], id["name"], body
-        )
-
-    def reload(self):
-        """Reloads the object from the Kubernetes API."""
-        # TODO: this is really ugly
-        tmpobj = CustomObject.load(**CustomObject.__get_object_id(self.rest_object))
-        self.rest_object = tmpobj.rest_object
-
-    def wait_for_phase(self, phase, timeout=240):
-        """Waits until object reaches given state. The solution currently
-        implemented is super simple and very similar to what we already have,
-        but does the job well.
-
-        # TODO: Maybe an implementation based on futures will be better in this case?
-        """
-        return self.wait_for(lambda s: s["status"].get("phase") == phase)
-
-    def wait_for(self, fn, timeout=240):
-        wait = 5
-        while True:
-            self.reload()
-            try:
-                if fn(self):
-                    return True
-            except Exception:
-                pass
-
-            if timeout > 0:
-                timeout -= wait
-                time.sleep(wait)
-            else:
-                break
-
-    def reaches_phase(self, phase):
-        return self.wait_for_phase(phase)
-
-    def abandons_phase(self, phase):
-        return self.wait_for(lambda s: s["status"].get("phase") != phase)
-
-    def __getitem__(self, key):
-        return self.rest_object[key]
-
-    def __setitem__(self, key, val):
-        self.rest_object[key] = val
-
-    def __str__(self):
-        id = CustomObject.__get_object_id(self.rest_object)
-        return "{}.{}/{}".format(id["plural"], id["group"], id["name"])
+        if self.auto_save:
+            self.update()
 
 
 class KubeObjectGeneric:
