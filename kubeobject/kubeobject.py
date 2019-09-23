@@ -10,7 +10,23 @@ from kubernetes import client
 
 
 class CustomObject:
-    def __init__(self, name: str, namespace: str, plural: str = None, kind: str = None, api_version: str = None):
+    """CustomObject is an object mapping to a Custom Resource in Kubernetes. It
+    includes simple facilities to update the Custom Resource, save it and
+    reload its state in a object oriented manner.
+
+    It is meant to be used to apply changes to Custom Resources and watch their
+    state as it is updated by a controller; an Operator in Kubernetes parlance.
+
+    """
+
+    def __init__(
+        self,
+        name: str,
+        namespace: str,
+        plural: str = None,
+        kind: str = None,
+        api_version: str = None,
+    ):
         self.name = name
         self.namespace = namespace
         self.plural = plural
@@ -25,7 +41,9 @@ class CustomObject:
         """Loads this object from the API."""
         api = client.CustomObjectsApi()
 
-        crd = get_crd_names(plural=self.plural, kind=self.kind, api_version=self.api_version)
+        crd = get_crd_names(
+            plural=self.plural, kind=self.kind, api_version=self.api_version
+        )
 
         obj = api.get_namespaced_custom_object(
             crd.spec.group,
@@ -43,16 +61,21 @@ class CustomObject:
     def create(self) -> CustomObject:
         api = client.CustomObjectsApi()
 
-        crd = get_crd_names(plural=self.plural, kind=self.kind, api_version=self.api_version)
+        crd = get_crd_names(
+            plural=self.plural, kind=self.kind, api_version=self.api_version
+        )
 
-        if not hasattr(self, 'backing_obj'):
+        if not hasattr(self, "backing_obj"):
             self.backing_obj = {
                 "kind": crd.spec.names.kind,
                 "apiVersion": "{}/{}".format(crd.spec.group, crd.spec.version),
                 "metadata": {"name": self.name, "namespace": self.namespace},
             }
         else:
-            self.backing_obj["metadata"] = {"name": self.name, "namespace": self.namespace}
+            self.backing_obj["metadata"] = {
+                "name": self.name,
+                "namespace": self.namespace,
+            }
 
         obj = api.create_namespaced_custom_object(
             crd.spec.group,
@@ -70,7 +93,9 @@ class CustomObject:
     def update(self) -> CustomObject:
         api = client.CustomObjectsApi()
 
-        crd = get_crd_names(plural=self.plural, kind=self.kind, api_version=self.api_version)
+        crd = get_crd_names(
+            plural=self.plural, kind=self.kind, api_version=self.api_version
+        )
 
         self.backing_obj["metadata"] = {"name": self.name, "namespace": self.namespace}
 
@@ -106,7 +131,13 @@ class CustomObject:
         api_version = doc["apiVersion"]
         crd = get_crd_names(kind=kind, api_version=api_version)
 
-        obj = cls(name, namespace, kind=kind, api_version=api_version, plural=crd.spec.names.plural)
+        obj = cls(
+            name,
+            namespace,
+            kind=kind,
+            api_version=api_version,
+            plural=crd.spec.names.plural,
+        )
         obj.saved = False
         obj.backing_obj = doc
 
