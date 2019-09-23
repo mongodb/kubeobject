@@ -1,12 +1,9 @@
 from __future__ import annotations
 
-import time
 import random
 import yaml
-
 from base64 import b64decode
 from string import ascii_lowercase, digits
-
 from typing import Optional
 
 from kubernetes import client
@@ -109,7 +106,7 @@ class CustomObject:
         api_version = doc["apiVersion"]
         crd = get_crd_names(kind=kind, api_version=api_version)
 
-        obj = CustomObject(name, namespace, kind=kind, api_version=api_version, plural=crd.spec.names.plural)
+        obj = cls(name, namespace, kind=kind, api_version=api_version, plural=crd.spec.names.plural)
         obj.saved = False
         obj.backing_obj = doc
 
@@ -126,37 +123,6 @@ class CustomObject:
     def reload(self):
         """Reloads the object from the Kubernetes API."""
         return self.load()
-
-    def wait_for_phase(self, phase, timeout=240):
-        """Waits until object reaches given state. The solution currently
-        implemented is super simple and very similar to what we already have,
-        but does the job well.
-
-        # TODO: Maybe an implementation based on futures will be better in this case?
-        """
-        return self.wait_for(lambda s: s["status"].get("phase") == phase)
-
-    def wait_for(self, fn, timeout=240):
-        wait = 5
-        while True:
-            self.reload()
-            try:
-                if fn(self):
-                    return True
-            except Exception:
-                pass
-
-            if timeout > 0:
-                timeout -= wait
-                time.sleep(wait)
-            else:
-                break
-
-    def reaches_phase(self, phase):
-        return self.wait_for_phase(phase)
-
-    def abandons_phase(self, phase):
-        return self.wait_for(lambda s: s["status"].get("phase") != phase)
 
     def __getitem__(self, key):
         return self.backing_obj[key]
