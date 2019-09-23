@@ -24,21 +24,18 @@ def mocked_crd_return_value():
     )
 
 
-@mock.patch("kubeobject.kubeobject.client.CustomObjectsApi")
+@mock.patch("kubeobject.kubeobject.client.CustomObjectsApi", return_value=mocked_custom_api())
 @mock.patch("kubeobject.kubeobject.get_crd_names", return_value=mocked_crd_return_value())
 def test_custom_object_creation(mocked_get_crd_names, mocked_client):
-    mocked_client.return_value = mocked_custom_api()
-
     custom = CustomObject("my-dummy-object", "my-dummy-namespace", kind="Dummy", api_version="dummy.com/v1").create()
 
     # Test that __getitem__ is well implemented
     assert custom["name"] == "my-dummy-object"
 
 
-@mock.patch("kubeobject.kubeobject.client.CustomObjectsApi")
+@mock.patch("kubeobject.kubeobject.client.CustomObjectsApi", return_value=mocked_custom_api())
 @mock.patch("kubeobject.kubeobject.get_crd_names", return_value=mocked_crd_return_value())
 def test_custom_object_read_from_disk(mocked_get_crd_names, mocked_client):
-    mocked_client.return_value = mocked_custom_api()
     yaml_data = """
 ---
 apiVersion: dummy.com/v1
@@ -54,3 +51,37 @@ metadata:
         m.assert_called_once_with("some-file.yaml")
 
         assert custom.name == "my-dummy-object0"
+
+
+@mock.patch("kubeobject.kubeobject.client.CustomObjectsApi", return_value=mocked_custom_api())
+@mock.patch("kubeobject.kubeobject.get_crd_names", return_value=mocked_crd_return_value())
+def test_custom_object_can_be_subclassed_create(mocked_crd_return_value, mocked_client):
+    class Subklass(CustomObject):
+        pass
+
+    a = Subklass("my-dummy-object", "my-dummy-namespace", kind="Dummy", api_version="dummy.com/v1").create()
+
+    assert a.__class__.__name__ == "Subklass"
+
+
+@mock.patch("kubeobject.kubeobject.client.CustomObjectsApi", return_value=mocked_custom_api())
+@mock.patch("kubeobject.kubeobject.get_crd_names", return_value=mocked_crd_return_value())
+def test_custom_object_can_be_subclassed_from_yaml(mocked_crd_return_value, mocked_client):
+    class Subklass(CustomObject):
+        pass
+
+    yaml_data = """
+---
+apiVersion: dummy.com/v1
+plural: dummies
+kind: Dummy
+metadata:
+  name: my-dummy-object0
+  namespace: my-dummy-namespace
+"""
+
+    with mock.patch("kubeobject.kubeobject.open", mock.mock_open(read_data=yaml_data), create=True) as m:
+        a = Subklass.from_yaml("some-other-file.yaml")
+        m.assert_called_once_with("some-other-file.yaml")
+
+        assert a.__class__.__name__ == "Subklass"
