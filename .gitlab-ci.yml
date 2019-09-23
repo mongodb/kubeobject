@@ -6,7 +6,7 @@ stages:
 - publish
 
 before_script:
-- pip install -r requirements-dev.txt
+- pip install -r requirements-test.txt
 - python setup.py install
 
 test:

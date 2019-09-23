@@ -1,8 +1,6 @@
--r requirements.txt
+-r requirements-test.txt
 jedi
 rope
 black
 flake8
 autopep8
-pytest-cov==2.7.1
-pytest==4.3.1
