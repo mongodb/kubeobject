@@ -16,7 +16,7 @@ test:
 
 publish:
   only:
-  - master
+  - tags
   stage: publish
   script:
   - pip install twine wheel
