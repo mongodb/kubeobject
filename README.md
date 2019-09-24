@@ -51,8 +51,9 @@ class IstioResource(CustomObject):
 
 # Creates an "istio" object in your namespace
 # Use `.load()` if you want to load this resource from Kubernetes instead of creating it.
-obj = IstioResource("my-istio", "my-namespace").create()
+obj = IstioResource("Istio", my-istio", "my-namespace").create()
 
+obj.reload()
 # Access attributes from the spec
 obj["spec"]["citadel"]["image"]
 

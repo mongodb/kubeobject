@@ -5,7 +5,7 @@ with open("README.md", "r") as fh:
 
 setup(
     name="kubeobject",
-    version="0.1.2",
+    version="0.1.3",
 
     author="Rodrigo Valin",
     author_email="licorna@gmail.com",
