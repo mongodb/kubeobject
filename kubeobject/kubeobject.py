@@ -143,6 +143,33 @@ class CustomObject:
 
         return obj
 
+    @classmethod
+    def define(cls, name, plural=None, api_version=None, kind=None):
+        """Defines a new class that will hold a particular type of object.
+
+        This is meant to be used as a quick replacement for
+        CustomObject if needed, but not extensive control or behaviour
+        needs to be implemented. If your particular use case requires more
+        control or more complex behaviour on top of the CustomObject class,
+        consider subclassing it.
+        """
+
+        class _defined(cls):
+            def __init__(self, name, namespace):
+                super(self.__class__, self).__init__(
+                    name, namespace, plural=plural, api_version=api_version, kind=kind
+                )
+
+            def __repr__(self):
+                return "{klass_name}({name}, {namespace})".format(
+                    klass_name=name, name=repr(self.name), namespace=repr(self.namespace)
+                )
+
+        if name is None:
+            raise ValueError("Need to pass a class name")
+
+        return _defined
+
     def delete(self):
         api = client.CustomObjectsApi()
         body = client.V1DeleteOptions()

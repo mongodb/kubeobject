@@ -44,10 +44,8 @@ from kubernetes import config
 
 config.load_kube_config()
 
-class IstioResource(CustomObject):
-    def __init__(self, name, namespace):
-        super(self.__class__, self).__init__(name, namespace, plural="istios", api_version="istio.banzaicloud.io/v1beta1")
-
+# Define an Istio type that will hold `CustomObject`s of type Istio.
+Istio = CustomObject.define(plural="istios", api_version="istio.banzaicloud.io/v1beta1")
 
 # Creates an "istio" object in your namespace
 # Use `.load()` if you want to load this resource from Kubernetes instead of creating it.
