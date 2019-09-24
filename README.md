@@ -49,7 +49,7 @@ Istio = CustomObject.define(plural="istios", api_version="istio.banzaicloud.io/v
 
 # Creates an "istio" object in your namespace
 # Use `.load()` if you want to load this resource from Kubernetes instead of creating it.
-obj = IstioResource("Istio", my-istio", "my-namespace").create()
+obj = IstioResource("Istio", "my-istio", "my-namespace").create()
 
 obj.reload()
 # Access attributes from the spec
