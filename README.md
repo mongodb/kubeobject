@@ -49,7 +49,7 @@ config.load_kube_config()
 # Define an Istio type that will hold `CustomObject`s of type Istio.
 Istio = CustomObject.define("Istio", plural="istios", api_version="istio.banzaicloud.io/v1beta1")
 
-# Creates an "istio" object in your namespace
+# Creates a "my-istio" object in the default namespace
 obj = Istio("my-istio", "default")
 obj["spec"] = {"version": "1.1.0", "mtls": True}
 
