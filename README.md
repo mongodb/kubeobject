@@ -39,6 +39,8 @@ obj.saved == True # this is true!
 ## Subclassing to better manage Istio Resources
 
 ``` python
+import time
+
 from kubeobject import CustomObject
 from kubernetes import config
 
@@ -48,7 +50,7 @@ config.load_kube_config()
 Istio = CustomObject.define("Istio", plural="istios", api_version="istio.banzaicloud.io/v1beta1")
 
 # Creates an "istio" object in your namespace
-obj = Istio("my-istio", "my-namespace")
+obj = Istio("my-istio", "default")
 obj["spec"] = {"version": "1.1.0", "mtls": True}
 
 # Save object
@@ -60,12 +62,16 @@ obj.reload()
 # Gets the current status
 assert obj["status"]["Status"] == "Reconciling"
 
-# Wait for a bit
-import time
-time.sleep(30)
+# Waits until object gets to "Available"
+obj.auto_reload = True
+while obj["status"]["Status"] != "Available":
+  print(".", end="", flush=True)
+  time.sleep(5)
 
-# Check status again
-obj.reload()
+# Make sure we got away from "Reconciling"
+assert obj["status"]["Status"] != "Reconciling"
+
+# And we are actually in "Available"
 assert obj["status"]["Status"] == "Available"
 
 # Delete the object

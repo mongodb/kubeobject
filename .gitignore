@@ -1,4 +1,5 @@
-KubeObject.egg-info
+kubeobject.egg-info
 build
 dist
 **/__pycache__/
+.coverage

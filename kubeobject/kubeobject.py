@@ -3,6 +3,7 @@ from __future__ import annotations
 import random
 import yaml
 from base64 import b64decode
+from datetime import datetime, timedelta
 from string import ascii_lowercase, digits
 from typing import Optional
 
@@ -30,22 +31,37 @@ class CustomObject:
         self.name = name
         self.namespace = namespace
 
-        crd = get_crd_names(
-            plural=plural, kind=kind, api_version=api_version
-        )
+        crd = get_crd_names(plural=plural, kind=kind, api_version=api_version)
 
         self.kind = crd.spec.names.kind
         self.plural = crd.spec.names.plural
         self.group = crd.spec.group
         self.version = crd.spec.version
 
-        self.saved = False
+        # True if this object is backed by a Kubernetes object, this is, it has
+        # been loaded or saved from/to Kubernetes API.
+        self.bound = False
+
+        # Set to True if the object needs to be updated every time one of its
+        # attributes is changed.
         self.auto_save = False
+
+        # Set `auto_reload` to `True` if it needs to be reloaded before every
+        # read of an attribute. This considers the `auto_reload_period`
+        # attribute at the same time.
+        self.auto_reload = False
+
+        # If `auto_reload` is set, it will not reload if less time than
+        # `auto_reload_period` has passed since last read.
+        self.auto_reload_period = timedelta(seconds=2)
+
+        # Last time this object was updated
+        self.last_update: datetime = None
 
         self.backing_obj = {
             "metadata": {"name": name, "namespace": namespace},
             "kind": self.kind,
-            "apiVersion": "{}/{}".format(self.group, self.version)
+            "apiVersion": "{}/{}".format(self.group, self.version),
         }
 
     def load(self) -> CustomObject:
@@ -53,35 +69,31 @@ class CustomObject:
         api = client.CustomObjectsApi()
 
         obj = api.get_namespaced_custom_object(
-            self.group,
-            self.version,
-            self.namespace,
-            self.plural,
-            self.name,
+            self.group, self.version, self.namespace, self.plural, self.name
         )
 
         self.backing_obj = obj
-        self.saved = True
+        self.bound = True
 
+        self._register_updated()
         return self
 
     def create(self) -> CustomObject:
+        """Creates this object in Kubernetes."""
         api = client.CustomObjectsApi()
 
         obj = api.create_namespaced_custom_object(
-            self.group,
-            self.version,
-            self.namespace,
-            self.plural,
-            self.backing_obj,
+            self.group, self.version, self.namespace, self.plural, self.backing_obj
         )
 
         self.backing_obj = obj
-        self.saved = True
+        self.bound = True
 
+        self._register_updated()
         return self
 
     def update(self) -> CustomObject:
+        """Updates the object in Kubernetes."""
         api = client.CustomObjectsApi()
 
         obj = api.patch_namespaced_custom_object(
@@ -94,16 +106,48 @@ class CustomObject:
         )
 
         self.backing_obj = obj
-        self.saved = True
 
+        self._register_updated()
         return self
+
+    def _register_updated(self):
+        """Register the last time the object was updated from Kubernetes."""
+        self.last_update = datetime.now()
+
+    def _reload_if_needed(self):
+        """Reloads the object is `self.auto_reload` is set to `True` and more than
+        `self.auto_reload_period` time has passed since last reload."""
+        if not self.auto_reload:
+            return
+
+        if self.last_update is None:
+            self.reload()
+
+        if datetime.now() - self.last_update > self.auto_reload_period:
+            self.reload()
 
     @classmethod
     def from_yaml(cls, yaml_file, name=None, namespace=None):
+        """Creates a `CustomObject` from a yaml file. In this case, `name` and
+        `namespace` are optional in this function's signature, because they
+        might be passed as part of the `yaml_file` document.
+        """
         doc = yaml.safe_load(open(yaml_file))
 
         if "metadata" not in doc:
             doc["metadata"] = dict()
+
+        if (name is None or name == "") and "name" not in doc["metadata"]:
+            raise ValueError(
+                "`name` needs to be passed as part of the function call "
+                "or exist in the `metadata` section of the yaml document."
+            )
+
+        if (namespace is None or namespace == "") and "namespace" not in doc["metadata"]:
+            raise ValueError(
+                "`namespace` needs to be passed as part of the function call "
+                "or exist in the `metadata` section of the yaml document."
+            )
 
         if name is None:
             name = doc["metadata"]["name"]
@@ -118,14 +162,7 @@ class CustomObject:
         kind = doc["kind"]
         api_version = doc["apiVersion"]
 
-        obj = cls(
-            name,
-            namespace,
-            kind=kind,
-            api_version=api_version,
-        )
-        obj.saved = False
-        obj.backing_obj = doc
+        obj = cls(name, namespace, kind=kind, api_version=api_version)
 
         return obj
 
@@ -148,7 +185,9 @@ class CustomObject:
 
             def __repr__(self):
                 return "{klass_name}({name}, {namespace})".format(
-                    klass_name=name, name=repr(self.name), namespace=repr(self.namespace)
+                    klass_name=name,
+                    name=repr(self.name),
+                    namespace=repr(self.namespace),
                 )
 
         if name is None:
@@ -157,6 +196,7 @@ class CustomObject:
         return _defined
 
     def delete(self):
+        """Deletes the object from Kubernetes."""
         api = client.CustomObjectsApi()
         body = client.V1DeleteOptions()
 
@@ -164,17 +204,21 @@ class CustomObject:
             self.group, self.version, self.namespace, self.plural, self.name, body
         )
 
+        self._register_updated()
+
     def reload(self):
         """Reloads the object from the Kubernetes API."""
         return self.load()
 
     def __getitem__(self, key):
+        self._reload_if_needed()
+
         return self.backing_obj[key]
 
     def __setitem__(self, key, val):
         self.backing_obj[key] = val
 
-        if self.auto_save:
+        if self.bound and self.auto_save:
             self.update()
 
 
