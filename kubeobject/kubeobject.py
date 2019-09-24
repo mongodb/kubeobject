@@ -29,27 +29,34 @@ class CustomObject:
     ):
         self.name = name
         self.namespace = namespace
-        self.plural = plural
-        self.api_version = api_version
-        if api_version is not None:
-            self.group, self.version = api_version.split("/")
-        self.kind = kind
+
+        crd = get_crd_names(
+            plural=plural, kind=kind, api_version=api_version
+        )
+
+        self.kind = crd.spec.names.kind
+        self.plural = crd.spec.names.plural
+        self.group = crd.spec.group
+        self.version = crd.spec.version
+
         self.saved = False
         self.auto_save = False
+
+        self.backing_obj = {
+            "metadata": {"name": name, "namespace": namespace},
+            "kind": self.kind,
+            "apiVersion": "{}/{}".format(self.group, self.version)
+        }
 
     def load(self) -> CustomObject:
         """Loads this object from the API."""
         api = client.CustomObjectsApi()
 
-        crd = get_crd_names(
-            plural=self.plural, kind=self.kind, api_version=self.api_version
-        )
-
         obj = api.get_namespaced_custom_object(
-            crd.spec.group,
-            crd.spec.version,
+            self.group,
+            self.version,
             self.namespace,
-            crd.spec.names.plural,
+            self.plural,
             self.name,
         )
 
@@ -61,27 +68,11 @@ class CustomObject:
     def create(self) -> CustomObject:
         api = client.CustomObjectsApi()
 
-        crd = get_crd_names(
-            plural=self.plural, kind=self.kind, api_version=self.api_version
-        )
-
-        if not hasattr(self, "backing_obj"):
-            self.backing_obj = {
-                "kind": crd.spec.names.kind,
-                "apiVersion": "{}/{}".format(crd.spec.group, crd.spec.version),
-                "metadata": {"name": self.name, "namespace": self.namespace},
-            }
-        else:
-            self.backing_obj["metadata"] = {
-                "name": self.name,
-                "namespace": self.namespace,
-            }
-
         obj = api.create_namespaced_custom_object(
-            crd.spec.group,
-            crd.spec.version,
+            self.group,
+            self.version,
             self.namespace,
-            crd.spec.names.plural,
+            self.plural,
             self.backing_obj,
         )
 
@@ -93,17 +84,11 @@ class CustomObject:
     def update(self) -> CustomObject:
         api = client.CustomObjectsApi()
 
-        crd = get_crd_names(
-            plural=self.plural, kind=self.kind, api_version=self.api_version
-        )
-
-        self.backing_obj["metadata"] = {"name": self.name, "namespace": self.namespace}
-
         obj = api.patch_namespaced_custom_object(
-            crd.spec.group,
-            crd.spec.version,
+            self.group,
+            self.version,
             self.namespace,
-            crd.spec.names.plural,
+            self.plural,
             self.name,
             self.backing_obj,
         )
@@ -117,6 +102,9 @@ class CustomObject:
     def from_yaml(cls, yaml_file, name=None, namespace=None):
         doc = yaml.safe_load(open(yaml_file))
 
+        if "metadata" not in doc:
+            doc["metadata"] = dict()
+
         if name is None:
             name = doc["metadata"]["name"]
         else:
@@ -129,14 +117,12 @@ class CustomObject:
 
         kind = doc["kind"]
         api_version = doc["apiVersion"]
-        crd = get_crd_names(kind=kind, api_version=api_version)
 
         obj = cls(
             name,
             namespace,
             kind=kind,
             api_version=api_version,
-            plural=crd.spec.names.plural,
         )
         obj.saved = False
         obj.backing_obj = doc

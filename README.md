@@ -4,6 +4,8 @@ _Easily manage Kubernetes Objects_
 
 KubeObject allows for the management of Kubernetes using a simple object mapper to Rest API objects.
 
+# Examples
+
 ## Using kubeobject to read a Custom Resource.
 
 ``` python
@@ -34,8 +36,6 @@ obj.saved == True # this is true!
 # All of them return an initialized CustomObject() (unless save() raises an exception)
 ```
 
-# Examples
-
 ## Subclassing to better manage Istio Resources
 
 ``` python
@@ -45,22 +45,31 @@ from kubernetes import config
 config.load_kube_config()
 
 # Define an Istio type that will hold `CustomObject`s of type Istio.
-Istio = CustomObject.define(plural="istios", api_version="istio.banzaicloud.io/v1beta1")
+Istio = CustomObject.define("Istio", plural="istios", api_version="istio.banzaicloud.io/v1beta1")
 
 # Creates an "istio" object in your namespace
-# Use `.load()` if you want to load this resource from Kubernetes instead of creating it.
-obj = IstioResource("Istio", "my-istio", "my-namespace").create()
+obj = Istio("my-istio", "my-namespace")
+obj["spec"] = {"version": "1.1.0", "mtls": True}
 
+# Save object
+obj.create()
+
+# Reload the Custom Object from Kubernetes
 obj.reload()
-# Access attributes from the spec
-obj["spec"]["citadel"]["image"]
 
-# Change atttributes frm the spec
-obj["spec"]["version"] = "1.1.0"
-obj.update()
+# Gets the current status
+assert obj["status"]["Status"] == "Reconciling"
 
-# We can observe the status of the object
-print(obj["status"])
+# Wait for a bit
+import time
+time.sleep(30)
+
+# Check status again
+obj.reload()
+assert obj["status"]["Status"] == "Available"
+
+# Delete the object
+obj.delete()
 ```
 
 ## Creating and updating a Custom Object
