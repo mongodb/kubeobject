@@ -63,7 +63,7 @@ def mocked_crd_return_value():
 @mock.patch("kubeobject.kubeobject.client.CustomObjectsApi", return_value=mocked_custom_api())
 @mock.patch("kubeobject.kubeobject.get_crd_names", return_value=mocked_crd_return_value())
 def test_custom_object_creation(mocked_get_crd_names, mocked_client):
-    custom = CustomObject("my-dummy-object", "my-dummy-namespace", kind="Dummy", api_version="dummy.com/v1").create()
+    custom = CustomObject("my-dummy-object", "my-dummy-namespace", kind="Dummy", group="dummy.com", version="v1").create()
 
     # Test that __getitem__ is well implemented
     assert custom["name"] == "my-dummy-object"
@@ -118,7 +118,7 @@ def test_custom_object_can_be_subclassed_create(mocked_crd_return_value, mocked_
     class Subklass(CustomObject):
         pass
 
-    a = Subklass("my-dummy-object", "my-dummy-namespace", kind="Dummy", api_version="dummy.com/v1").create()
+    a = Subklass("my-dummy-object", "my-dummy-namespace", kind="Dummy", group="dummy.com", version="v1").create()
 
     assert a.__class__.__name__ == "Subklass"
 
@@ -139,7 +139,7 @@ def test_custom_object_can_be_subclassed_from_yaml(mocked_crd_return_value, mock
 @mock.patch("kubeobject.kubeobject.client.CustomObjectsApi", return_value=mocked_custom_api())
 @mock.patch("kubeobject.kubeobject.get_crd_names", return_value=mocked_crd_return_value())
 def test_custom_object_defined(mocked_crd_return_value, mocked_client):
-    klass = CustomObject.define("Dummy", plural="dummies", api_version="dummy.com/v1")
+    klass = CustomObject.define("Dummy", plural="dummies", group="dummy.com", version="v1")
 
     k = klass("my-dummy", "default").create()
 
@@ -152,13 +152,13 @@ def test_custom_object_defined(mocked_crd_return_value, mocked_client):
 
 def test_defined_failed_with_no_name():
     with pytest.raises(ValueError, match="Need to pass a class name"):
-        CustomObject.define(None, plural="some-plural", api_version="some.api/version")
+        CustomObject.define(None, plural="some-plural", group="some.api", version="version")
 
 
 @mock.patch("kubeobject.kubeobject.client.CustomObjectsApi", return_value=mocked_custom_api())
 @mock.patch("kubeobject.kubeobject.get_crd_names", return_value=mocked_crd_return_value())
 def test_custom_object_auto_reload(mocked_get_crd_names, mocked_client):
-    klass = CustomObject.define("Dummy", plural="dummies", api_version="dummy.com/v1")
+    klass = CustomObject.define("Dummy", plural="dummies", group="dummy.com", version="v1")
 
     k = klass("my-dummy", "default")
     assert k.last_update is None
