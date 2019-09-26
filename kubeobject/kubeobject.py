@@ -23,17 +23,23 @@ class CustomObject:
         namespace: str,
         plural: str = None,
         kind: str = None,
-        api_version: str = None,
+        group: str = None,
+        version: str = None,
     ):
         self.name = name
         self.namespace = namespace
 
-        crd = get_crd_names(plural=plural, kind=kind, api_version=api_version)
-
-        self.kind = crd.spec.names.kind
-        self.plural = crd.spec.names.plural
-        self.group = crd.spec.group
-        self.version = crd.spec.version
+        if plural is None or kind is None or group is None or version is None:
+            crd = get_crd_names(plural=plural, kind=kind, group=group, version=version)
+            self.kind = crd.spec.names.kind
+            self.plural = crd.spec.names.plural
+            self.group = crd.spec.group
+            self.version = crd.spec.version
+        else:
+            self.kind = kind
+            self.plural = plural
+            self.group = group
+            self.version = version
 
         # True if this object is backed by a Kubernetes object, this is, it has
         # been loaded or saved from/to Kubernetes API.
@@ -55,16 +61,19 @@ class CustomObject:
         # Last time this object was updated
         self.last_update: datetime = None
 
+        # Sets the API used for this particular type of object
+        self.api = client.CustomObjectsApi
+
         if not hasattr(self, 'backing_obj'):
             self.backing_obj = {
                 "metadata": {"name": name, "namespace": namespace},
                 "kind": self.kind,
-                "apiVersion": "{}/{}".format(self.group, self.version),
+                "apiVersion": "/".join(filter(None, [group, version])),
             }
 
     def load(self) -> CustomObject:
         """Loads this object from the API."""
-        api = client.CustomObjectsApi()
+        api = self.api()
 
         obj = api.get_namespaced_custom_object(
             self.group, self.version, self.namespace, self.plural, self.name
@@ -78,7 +87,7 @@ class CustomObject:
 
     def create(self) -> CustomObject:
         """Creates this object in Kubernetes."""
-        api = client.CustomObjectsApi()
+        api = self.api()
 
         obj = api.create_namespaced_custom_object(
             self.group, self.version, self.namespace, self.plural, self.backing_obj
@@ -92,7 +101,7 @@ class CustomObject:
 
     def update(self) -> CustomObject:
         """Updates the object in Kubernetes."""
-        api = client.CustomObjectsApi()
+        api = self.api()
 
         obj = api.patch_namespaced_custom_object(
             self.group,
@@ -159,14 +168,19 @@ class CustomObject:
 
         kind = doc["kind"]
         api_version = doc["apiVersion"]
+        if "/" in api_version:
+            group, version = api_version.split("/")
+        else:
+            group = None
+            version = api_version
 
-        obj = cls(name, namespace, kind=kind, api_version=api_version)
+        obj = cls(name, namespace, kind=kind, group=group, version=version)
         obj.backing_obj = doc
 
         return obj
 
     @classmethod
-    def define(cls, name, plural=None, api_version=None, kind=None):
+    def define(cls, name, plural=None, group=None, version=None, kind=None):
         """Defines a new class that will hold a particular type of object.
 
         This is meant to be used as a quick replacement for
@@ -179,7 +193,7 @@ class CustomObject:
         class _defined(cls):
             def __init__(self, name, namespace):
                 super(self.__class__, self).__init__(
-                    name, namespace, plural=plural, api_version=api_version, kind=kind
+                    name, namespace, plural=plural, group=group, version=version, kind=kind
                 )
 
             def __repr__(self):
@@ -221,16 +235,12 @@ class CustomObject:
             self.update()
 
 
-def get_crd_names(plural=None, kind=None, api_version=None) -> Optional[dict]:
-    """Gets the names, group and version by the identifier."""
+def get_crd_names(plural=None, kind=None, group=None, version=None) -> Optional[dict]:
+    """Gets the CRD entry that matches all the parameters passed."""
     api = client.ApiextensionsV1beta1Api()
 
-    if plural == kind == api_version is None:
+    if plural == kind == group == version is None:
         return None
-
-    group = version = ""
-    if api_version is not None:
-        group, version = api_version.split("/")
 
     crds = api.list_custom_resource_definition()
     for crd in crds.items:

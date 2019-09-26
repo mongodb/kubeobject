@@ -1,120 +1,180 @@
+from __future__ import annotations
+
 from base64 import b64decode
 from kubernetes import client
 
+from . import CustomObject
 
-class KubeObjectGeneric:
-    @classmethod
-    def create(cls):
-        pass
 
-    @classmethod
-    def read(cls):
-        pass
+class GenericDataObject(CustomObject):
+    """Holds a Kubernetes Data Object, like ConfigMap & Secret."""
+    def __init__(self, name: str, namespace: str, kind: str = None, singular: str = None, plural: str = None):
+        super(GenericDataObject, self).__init__(
+            name,
+            namespace,
+            plural=plural,
+            kind=kind,
+            group="",
+            version="v1",
+        )
+
+        # _data object will contain the data that we'll be updating
+        # in the underlying resource.
+        self._data = {}
+
+        # Name of the resource type
+        self.singular = singular
+
+    def load(self):
+        obj = self._read_fn(self.name, self.namespace)
+        self._data = obj.data
+
+        self.backing_obj = obj
+        self.bound = True
+
+        self._register_updated()
+        return self
+
+    def create(self):
+        body = self._constructor(
+            metadata=client.V1ObjectMeta(name=self.name),
+            **self._data_update_param(),
+        )
+
+        obj = self._create_fn(self.namespace, body)
+
+        self.backing_obj = obj
+        self.bound = True
+
+        self._register_updated()
+        return self
 
     def delete(self):
-        pass
+        body = client.V1DeleteOptions()
+        return self._delete_fn(self.name, self.namespace, body=body)
 
     def update(self):
-        pass
+        obj = self._constructor(
+            metadata=client.V1ObjectMeta(name=self.name), **self._data_update_param()
+        )
 
-    @property
-    def data(self):
-        if isinstance(self, ConfigMap):
-            return self.backing_obj.data
-        elif isinstance(self, Secret):
+        self.backing_obj = self._patch_fn(
+            self.name, self.namespace, obj
+        )
+
+    def data(self, _data: dict = None):
+        if _data is None:
+            return self._data
+
+        if not isinstance(_data, dict):
+            raise ValueError("data() expects a dictonary")
+
+        self._data.update(_data)
+
+    def _data_update_param(self):
+        return {"data": self._data}
+
+    def __str__(self):
+        return "{}/{}".format(self.singular, self.name)
+
+
+class ConfigMap(GenericDataObject):
+    def __init__(self, name: str, namespace: str):
+        super(self.__class__, self).__init__(
+            name,
+            namespace,
+            kind="ConfigMap",
+            singular="configmap",
+            plural="configmaps",
+        )
+
+        self.api = client.CoreV1Api()
+
+        self._read_fn = self.api.read_namespaced_config_map
+        self._create_fn = self.api.create_namespaced_config_map
+        self._delete_fn = self.api.delete_namespaced_config_map
+        self._patch_fn = self.api.patch_namespaced_config_map
+        self._constructor = client.V1ConfigMap
+
+
+class Secret(GenericDataObject):
+    def __init__(self, name: str, namespace: str):
+        super(self.__class__, self).__init__(
+            name,
+            namespace,
+            kind="Secret",
+            singular="secret",
+            plural="secrets",
+        )
+
+        self.api = client.CoreV1Api()
+
+        self._read_fn = self.api.read_namespaced_secret
+        self._create_fn = self.api.create_namespaced_secret
+        self._delete_fn = self.api.delete_namespaced_secret
+        self._patch_fn = self.api.patch_namespaced_secret
+        self._constructor = client.V1Secret
+
+    def _data_update_param(self):
+        return {"string_data": self._data}
+
+    def data(self, _data: dict = None):
+        if _data is None:
             return {
                 k: b64decode(v).decode("utf-8")
-                for (k, v) in self.backing_obj.data.items()
+                for (k, v) in self._data.items()
             }
 
+        if not isinstance(_data, dict):
+            raise ValueError("data() expects a dictonary")
 
-class ConfigMap(KubeObjectGeneric):
-    @classmethod
-    def create(cls, name, namespace, data):
-        api = client.CoreV1Api()
-        metadata = client.V1ObjectMeta(name=name)
-        body = client.V1ConfigMap(metadata=metadata, data=data)
-        return ConfigMap(
-            name, namespace, api.create_namespaced_config_map(namespace, body)
+        self._data.update(_data)
+
+
+class Namespace(CustomObject):
+    def __init__(self, name: str):
+        super(self.__class__, self).__init__(
+            name,
+            namespace="",
+            kind="Namespace",
+            plural="namespaces",
+            group="",
+            version="v1",
         )
 
-    @classmethod
-    def read(cls, name, namespace):
-        api = client.CoreV1Api()
-        return ConfigMap(
-            name, namespace, api.read_namespaced_config_map(name, namespace)
-        )
+        self.api = client.CoreV1Api
 
-    def __init__(self, name, namespace, backing_obj):
-        self.name = name
-        self.namespace = namespace
-        self.backing_obj = backing_obj
+    def create(self) -> Namespace:
+        api = client.CoreV1Api()
+        namespace = client.V1Namespace(metadata=client.V1ObjectMeta(name=self.name))
+
+        obj = api.create_namespace(namespace)
+
+        self.backing_obj = obj
+        self.bound = True
+
+        self._register_updated()
+        return self
+
+    def load(self) -> Namespace:
+        api = self.api()
+
+        obj = api.read_namespace(self.name)
+
+        self.backing_obj = obj
+        self.bound = True
+
+        self._register_updated()
+        return self
 
     def delete(self):
         api = client.CoreV1Api()
         body = client.V1DeleteOptions()
 
-        return api.delete_namespaced_config_map(self.name, self.namespace, body=body)
+        api.delete_namespace(self.name, body=body)
+        self.bound = False
 
-    def update(self, data):
-        api = client.CoreV1Api()
-        configmap = client.V1ConfigMap(
-            metadata=client.V1ObjectMeta(name=self.name), data=data
-        )
-
-        self.backing_obj = api.patch_namespaced_config_map(
-            self.name, self.namespace, configmap
-        )
-
-    def __str__(self):
-        return "configmap/{}".format(self.name)
-
-
-class Secret(KubeObjectGeneric):
-    @classmethod
-    def create(cls, name, namespace, data):
-        api = client.CoreV1Api()
-        metadata = client.V1ObjectMeta(name=name)
-        body = client.V1Secret(metadata=metadata, string_data=data)
-        return Secret(name, namespace, api.create_namespaced_secret(namespace, body))
-
-    @classmethod
-    def read(cls, name, namespace):
-        api = client.CoreV1Api()
-        return Secret(name, namespace, api.read_namespaced_secret(name, namespace))
-
-    def __init__(self, name, namespace, backing_obj):
-        self.name = name
-        self.namespace = namespace
-        self.backing_obj = backing_obj
-
-    def delete(self):
-        api = client.CoreV1Api()
-        body = client.V1DeleteOptions()
-
-        return api.delete_namespaced_secret(self.name, self.namespace, body=body)
-
-    def update(self, data):
-        api = client.CoreV1Api()
-        secret = client.V1Secret(
-            metadata=client.V1ObjectMeta(name=self.name), string_data=data
-        )
-
-        self.backing_obj = api.patch_namespaced_secret(
-            self.name, self.namespace, secret
-        )
-
-    def __str__(self):
-        return "secret/{}".format(self.name)
-
-
-class Namespace(KubeObjectGeneric):
-    @classmethod
-    def create(cls, name):
-        api = client.CoreV1Api()
-        namespace = client.V1Namespace(metadata=client.V1ObjectMeta(name=name))
-
-        return Namespace(name, api.create_namespace(namespace))
+        self._register_updated()
 
     @classmethod
     def exists(cls, name):
@@ -125,16 +185,6 @@ class Namespace(KubeObjectGeneric):
             return False
 
         return True
-
-    def __init__(self, name, backing_obj):
-        self.name = name
-        self.backing_obj = backing_obj
-
-    def delete(self):
-        api = client.CoreV1Api()
-        body = client.V1DeleteOptions()
-
-        return api.delete_namespace(self.name, body=body)
 
     def __str__(self):
         return "namespace/{}".format(self.name)

@@ -13,7 +13,6 @@ from .deployment import Deployment
 from .service import Service
 
 from .corev1api import (
-    KubeObjectGeneric,
     Namespace,
     ConfigMap,
     Secret,
