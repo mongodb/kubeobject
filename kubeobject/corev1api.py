@@ -60,11 +60,14 @@ class GenericDataObject(CustomObject):
             self.name, self.namespace, obj
         )
 
-    def data(self, **kwargs):
-        if len(kwargs) == 0:
+    def data(self, _data: dict = None):
+        if _data is None:
             return self._data
 
-        self._data.update(kwargs)
+        if not isinstance(_data, dict):
+            raise ValueError("data() expects a dictonary")
+
+        self._data.update(_data)
 
     def _data_update_param(self):
         return {"data": self._data}
@@ -113,14 +116,17 @@ class Secret(GenericDataObject):
     def _data_update_param(self):
         return {"string_data": self._data}
 
-    def data(self, **kwargs):
-        if len(kwargs) == 0:
+    def data(self, _data: dict = None):
+        if _data is None:
             return {
                 k: b64decode(v).decode("utf-8")
                 for (k, v) in self._data.items()
             }
 
-        self._data.update(kwargs)
+        if not isinstance(_data, dict):
+            raise ValueError("data() expects a dictonary")
+
+        self._data.update(_data)
 
 
 # TODO: Properly implement CustomObject
