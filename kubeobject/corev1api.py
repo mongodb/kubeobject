@@ -6,8 +6,8 @@ from . import CustomObject
 
 class GenericDataObject(CustomObject):
     """Holds a Kubernetes Data Object, like ConfigMap & Secret."""
-    def __init__(self, name: str, namespace: str, kind: str, singular: str, plural: str):
-        super(self.__class__, self).__init__(
+    def __init__(self, name: str, namespace: str, kind: str = None, singular: str = None, plural: str = None):
+        super(GenericDataObject, self).__init__(
             name,
             namespace,
             plural=plural,
@@ -20,7 +20,7 @@ class GenericDataObject(CustomObject):
         # in the underlying resource.
         self._data = {}
 
-        # Name of the object
+        # Name of the resource type
         self.singular = singular
 
     def load(self):
@@ -78,9 +78,9 @@ class ConfigMap(GenericDataObject):
         super(self.__class__, self).__init__(
             name,
             namespace,
-            "ConfigMap",
-            "configmap",
-            "configmaps",
+            kind="ConfigMap",
+            singular="configmap",
+            plural="configmaps",
         )
 
         self.api = client.CoreV1Api()
@@ -92,7 +92,7 @@ class ConfigMap(GenericDataObject):
         self._constructor = client.V1ConfigMap
 
 
-class Secret(CustomObject):
+class Secret(GenericDataObject):
     def __init__(self, name: str, namespace: str):
         super(self.__class__, self).__init__(
             name,
