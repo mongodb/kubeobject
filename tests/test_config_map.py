@@ -4,10 +4,6 @@ import pytest
 from kubernetes import config
 from kubeobject import ConfigMap, Secret
 
-
-config.load_kube_config()
-
-
 # pytestmark will be evaluated at a module level. In this case we'll skip if the environemnt variable is
 # not defined. A very easy solution would be to install kind and do:
 #
@@ -18,7 +14,12 @@ pytestmark = pytest.mark.skipif(os.getenv("KUBECONFIG") is None, reason="No defi
 
 
 @pytest.fixture(scope="module")
-def config_map():
+def kube_config():
+    config.load_kube_config()
+
+
+@pytest.fixture(scope="module")
+def config_map(kube_config):
     cm = ConfigMap("my-config-map", "default").create()
 
     yield cm
