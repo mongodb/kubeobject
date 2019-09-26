@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from base64 import b64decode
 from kubernetes import client
 
@@ -129,14 +131,50 @@ class Secret(GenericDataObject):
         self._data.update(_data)
 
 
-# TODO: Properly implement CustomObject
 class Namespace(CustomObject):
-    @classmethod
-    def create(cls, name):
-        api = client.CoreV1Api()
-        namespace = client.V1Namespace(metadata=client.V1ObjectMeta(name=name))
+    def __init__(self, name: str):
+        super(self.__class__, self).__init__(
+            name,
+            namespace="",
+            kind="Namespace",
+            plural="namespaces",
+            group="",
+            version="v1",
+        )
 
-        return Namespace(name, api.create_namespace(namespace))
+        self.api = client.CoreV1Api
+
+    def create(self) -> Namespace:
+        api = client.CoreV1Api()
+        namespace = client.V1Namespace(metadata=client.V1ObjectMeta(name=self.name))
+
+        obj = api.create_namespace(namespace)
+
+        self.backing_obj = obj
+        self.bound = True
+
+        self._register_updated()
+        return self
+
+    def load(self) -> Namespace:
+        api = self.api()
+
+        obj = api.read_namespace(self.name)
+
+        self.backing_obj = obj
+        self.bound = True
+
+        self._register_updated()
+        return self
+
+    def delete(self):
+        api = client.CoreV1Api()
+        body = client.V1DeleteOptions()
+
+        api.delete_namespace(self.name, body=body)
+        self.bound = False
+
+        self._register_updated()
 
     @classmethod
     def exists(cls, name):
@@ -147,16 +185,6 @@ class Namespace(CustomObject):
             return False
 
         return True
-
-    def __init__(self, name, backing_obj):
-        self.name = name
-        self.backing_obj = backing_obj
-
-    def delete(self):
-        api = client.CoreV1Api()
-        body = client.V1DeleteOptions()
-
-        return api.delete_namespace(self.name, body=body)
 
     def __str__(self):
         return "namespace/{}".format(self.name)

@@ -2,8 +2,10 @@ import os
 import pytest
 
 from kubernetes import config
-from kubeobject import ConfigMap, Secret
+from kubeobject import ConfigMap, Secret, Namespace, generate_random_name
 
+
+# TODO: Make sure these tests can run on gitlab-ci
 # pytestmark will be evaluated at a module level. In this case we'll skip if the environemnt variable is
 # not defined. A very easy solution would be to install kind and do:
 #
@@ -65,3 +67,23 @@ def test_secret_can_write_data_correctly(secret):
 
     s1 = Secret("my-secret", "default").load()
     assert s1.data() == {"some-key": "some-value"}
+
+
+@pytest.fixture(scope="module")
+def namespace(kube_config):
+
+    ns = Namespace(generate_random_name()).create()
+
+    yield ns
+
+    ns.delete()
+
+
+def test_namespace(namespace):
+    assert len(namespace.name) > 10
+
+
+def test_load_namespace(namespace):
+    n0 = Namespace(namespace.name).load()
+
+    assert n0.name == namespace.name
