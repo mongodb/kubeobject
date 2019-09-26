@@ -4,11 +4,9 @@ _A simple to use wrapping on top of Kubernetes custom resources with
 object oriented semantics._
 
 KubeObject allows you to use Kubernetes Custom Objects in an object
-oriented way.
-
-It works by defining an object, by instantiating it with a `name` and
-`namespace` and then "bounding" this object to a Kubernetes object by
-creating it, or loading it, if it already exists.
+oriented way. It works by defining an object, by instantiating it with
+a `name` and `namespace` and then "bounding" this object to a
+Kubernetes object by creating it, or loading it, if it already exists.
 
 # Quick Start
 
