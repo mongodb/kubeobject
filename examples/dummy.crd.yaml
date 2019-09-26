@@ -10,6 +10,4 @@ spec:
   names:
     kind: Dummy
     plural: dummies
-    shortnames:
-    - dum
     singular: dummy
