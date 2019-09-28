@@ -21,8 +21,8 @@ class CustomObject:
         self,
         name: str,
         namespace: str,
-        plural: str = None,
         kind: str = None,
+        plural: str = None,
         group: str = None,
         version: str = None,
     ):
@@ -174,13 +174,17 @@ class CustomObject:
             group = None
             version = api_version
 
-        obj = cls(name, namespace, kind=kind, group=group, version=version)
+        if getattr(cls, "object_names_initialized", False):
+            obj = cls(name, namespace)
+        else:
+            obj = cls(name, namespace, kind=kind, group=group, version=version)
+
         obj.backing_obj = doc
 
         return obj
 
     @classmethod
-    def define(cls, name, plural=None, group=None, version=None, kind=None):
+    def define(cls, name, kind=None, plural=None, group=None, version=None):
         """Defines a new class that will hold a particular type of object.
 
         This is meant to be used as a quick replacement for
@@ -190,23 +194,27 @@ class CustomObject:
         consider subclassing it.
         """
 
-        class _defined(cls):
-            def __init__(self, name, namespace):
-                super(self.__class__, self).__init__(
-                    name, namespace, plural=plural, group=group, version=version, kind=kind
-                )
+        def __init__(self, name, namespace, **kwargs):
+            CustomObject.__init__(
+                self, name, namespace, kind=kind, plural=plural, group=group, version=version
+            )
 
-            def __repr__(self):
-                return "{klass_name}({name}, {namespace})".format(
-                    klass_name=name,
-                    name=repr(self.name),
-                    namespace=repr(self.namespace),
-                )
+        def __repr__(self):
+            return "{klass_name}({name}, {namespace})".format(
+                klass_name=name,
+                name=repr(self.name),
+                namespace=repr(self.namespace),
+            )
 
-        if name is None:
-            raise ValueError("Need to pass a class name")
-
-        return _defined
+        return type(
+            name,
+            (CustomObject, ),
+            {
+                "object_names_initialized": True,
+                "__init__": __init__,
+                "__repr__": __repr__,
+            }
+        )
 
     def delete(self):
         """Deletes the object from Kubernetes."""

@@ -48,6 +48,10 @@ def mocked_custom_api():
             stored_body.append(body)
             return body
 
+        def patch_namespaced_custom_object(group, version, namespace, plural, name, body: dict):
+            stored_body.append(body)
+            return body
+
     return MockedApi
 
 
@@ -143,16 +147,27 @@ def test_custom_object_defined(mocked_crd_return_value, mocked_client):
 
     k = klass("my-dummy", "default").create()
 
-    # TODO: How to make this?
-    # assert k.__class__.__name__ == "Dummy"
-    assert k.__class__.__name__ == "_defined"
+    assert k.__class__.__bases__ == (CustomObject, )
+    assert k.__class__.__name__ == "Dummy"
 
     assert repr(k) == "Dummy('my-dummy', 'default')"
 
 
-def test_defined_failed_with_no_name():
-    with pytest.raises(ValueError, match="Need to pass a class name"):
-        CustomObject.define(None, plural="some-plural", group="some.api", version="version")
+@mock.patch("kubeobject.kubeobject.client.CustomObjectsApi", return_value=mocked_custom_api())
+def test_defined_wont_require_api_if_all_parameteres_are_provided(mocked_client):
+    BaseKlass = CustomObject.define("Dummy", kind="Dummy", plural="dummies", group="dummy.com", version="v1")
+
+    class SubKlass(BaseKlass):
+        def get_spec(self):
+            return self["spec"]
+
+    k = SubKlass("my-dummy", "default").create()
+    k["spec"] = {"testAttr": "value"}
+
+    k.update()
+    k.reload()
+
+    assert k.get_spec() == {"testAttr": "value"}
 
 
 @mock.patch("kubeobject.kubeobject.client.CustomObjectsApi", return_value=mocked_custom_api())
