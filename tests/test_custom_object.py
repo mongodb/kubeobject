@@ -212,5 +212,6 @@ def test_raises_if_no_namespace():
 
 @mock.patch("kubeobject.kubeobject.get_crd_names", return_value=mocked_crd_return_value())
 def test_name_is_set_as_argument(_):
+    # TODO: what is this test supposed to do?
     with mock.patch("kubeobject.kubeobject.open", mock.mock_open(read_data=yaml_data1), create=True) as _:
         CustomObject.from_yaml("some-other-file.yaml", name="some-name", namespace="some-namespace")

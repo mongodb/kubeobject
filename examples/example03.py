@@ -31,8 +31,10 @@ obj = Istio("my-istio", "default")
 # Set a very basic configuration
 obj["spec"] = {"version": "1.1.0", "mtls": True}
 
-# Save object
+# Save object... give it a few seconds for the Istio operator to pick it up
+# and to write an status to it.
 obj.create()
+time.sleep(5)
 
 # Reload the Custom Object from Kubernetes
 obj.reload()

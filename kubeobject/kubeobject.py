@@ -62,7 +62,7 @@ class CustomObject:
         self.last_update: datetime = None
 
         # Sets the API used for this particular type of object
-        self.api = client.CustomObjectsApi
+        self.api = client.CustomObjectsApi()
 
         if not hasattr(self, 'backing_obj'):
             self.backing_obj = {
@@ -73,9 +73,8 @@ class CustomObject:
 
     def load(self) -> CustomObject:
         """Loads this object from the API."""
-        api = self.api()
 
-        obj = api.get_namespaced_custom_object(
+        obj = self.api.get_namespaced_custom_object(
             self.group, self.version, self.namespace, self.plural, self.name
         )
 
@@ -87,9 +86,7 @@ class CustomObject:
 
     def create(self) -> CustomObject:
         """Creates this object in Kubernetes."""
-        api = self.api()
-
-        obj = api.create_namespaced_custom_object(
+        obj = self.api.create_namespaced_custom_object(
             self.group, self.version, self.namespace, self.plural, self.backing_obj
         )
 
@@ -101,9 +98,7 @@ class CustomObject:
 
     def update(self) -> CustomObject:
         """Updates the object in Kubernetes."""
-        api = self.api()
-
-        obj = api.patch_namespaced_custom_object(
+        obj = self.api.patch_namespaced_custom_object(
             self.group,
             self.version,
             self.namespace,
@@ -235,6 +230,10 @@ class CustomObject:
         self._reload_if_needed()
 
         return self.backing_obj[key]
+
+    def __contains__(self, key):
+        self._reload_if_needed()
+        return key in self.backing_obj
 
     def __setitem__(self, key, val):
         self.backing_obj[key] = val
