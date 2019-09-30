@@ -20,7 +20,7 @@ def kube_config():
     config.load_kube_config()
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture()
 def config_map(kube_config):
     cm = ConfigMap("my-config-map", "default").create()
 
@@ -29,18 +29,108 @@ def config_map(kube_config):
     cm.delete()
 
 
-def test_configmap_is_read(config_map):
+def test_configmap_is_added_and_emptied(config_map):
     config_map.data({"some-key": "some-value"})
 
-    assert "some-key" in config_map.data()
+    config_map.update()
+    config_map.reload()
+
+    assert config_map.data()["some-key"] == "some-value"
+    assert len(config_map.data()) == 1
+
+    config_map.data({
+        "some-key1": "some-value1",
+        "some-key2": "some-value2"
+    })
 
     config_map.update()
+    config_map.reload()
+
+    assert config_map.data() == {
+        "some-key": "some-value",
+        "some-key1": "some-value1",
+        "some-key2": "some-value2",
+    }
+
+    config_map.data({"some-key": None})
+    config_map.update()
+    config_map.reload()
+
+    assert config_map.data() == {
+        "some-key1": "some-value1",
+        "some-key2": "some-value2",
+    }
+
+    config_map.data({"some-key1": None})
+    config_map.update()
+    config_map.reload()
+
+    assert config_map.data() == {
+        "some-key2": "some-value2",
+    }
+
+    config_map.data({"some-key2": None})
+    config_map.update()
+    config_map.reload()
+
+    assert config_map.data() == {}
+
+    config_map.data({"some-key": "some-value"})
+
+    config_map.update()
+    config_map.reload()
+
+    assert config_map.data()["some-key"] == "some-value"
+    assert len(config_map.data()) == 1
+
+    config_map.data({
+        "some-key1": "some-value1",
+        "some-key2": "some-value2"
+    })
+
+    config_map.update()
+    config_map.reload()
+
+    assert config_map.data() == {
+        "some-key": "some-value",
+        "some-key1": "some-value1",
+        "some-key2": "some-value2",
+    }
+
+    config_map.data({"some-key": None})
+    config_map.update()
+    config_map.reload()
+
+    assert config_map.data() == {
+        "some-key1": "some-value1",
+        "some-key2": "some-value2",
+    }
+
+    config_map.data({"some-key1": None})
+    config_map.update()
+    config_map.reload()
+
+    assert config_map.data() == {
+        "some-key2": "some-value2",
+    }
 
 
-def test_configmap_has_contents():
-    cm = ConfigMap("my-config-map", "default").load()
+def test_configmap_is_cleared(config_map):
+    config_map.reload()
 
-    assert "some-key" in cm.data()
+    assert config_map.data() == {}
+
+    config_map.data({"some-key": "some-value"})
+    config_map.update()
+    config_map.reload()
+
+    assert config_map.data() == {"some-key": "some-value"}
+
+    config_map.data({"some-key": None})
+    config_map.update()
+    config_map.reload()
+
+    assert len(config_map.data()) == 0
 
 
 def test_configmap_raises_if_invalid_data(config_map):
@@ -48,8 +138,8 @@ def test_configmap_raises_if_invalid_data(config_map):
         config_map.data("some")
 
 
-@pytest.fixture(scope="module")
-def secret():
+@pytest.fixture()
+def secret(kube_config):
     secret = Secret("my-secret", "default").create()
 
     yield secret
@@ -61,12 +151,124 @@ def test_secret_is_readable(secret):
     assert secret.data() == dict()
 
 
-def test_secret_can_write_data_correctly(secret):
-    secret.data({"some-key": "some-value"})
+def test_secret_can_write_and_read_data(secret):
+    with pytest.raises(KeyError):
+        assert secret.data()["some"]
+
+    secret.data({"key0": "value0"})
+    secret.update()
+    secret.reload()
+
+    assert secret.data()["key0"] == "value0"
+
+    secret.data({"another-key": "another-value"})
+    secret.update()
+    secret.reload()
+
+    assert secret.data() == {
+        "key0": "value0",
+        "another-key": "another-value",
+    }
+
+    secret.data({"one-last-key": "one-last-value"})
+    secret.update()
+    secret.reload()
+
+    assert secret.data() == {
+        "key0": "value0",
+        "another-key": "another-value",
+        "one-last-key": "one-last-value"
+    }
+
+    assert secret.data()
+
+
+def test_secret_is_readed_and_emptied(secret):
+    secret.data({"my-data": "my-value"})
+    secret.update()
+    secret.reload()
+    assert secret.data() == {"my-data": "my-value"}
+
+    secret.data({"my-data": None})
+    secret.update()
+    secret.reload()
+    assert secret.data() == {}
+
+    secret.data({"new-key": "new-value"})
+    secret.update()
+    secret.reload()
+    assert secret.data() == {"new-key": "new-value"}
+
+    secret.data({
+        "new-key1": "new-value1",
+        "new-key2": "new-value2",
+    })
+    secret.update()
+    secret.reload()
+    assert secret.data() == {
+        "new-key": "new-value",
+        "new-key1": "new-value1",
+        "new-key2": "new-value2",
+    }
+
+
+def test_secret_values_are_updated(secret):
+    secret.data({
+        "new-key0": "new-value0",
+        "new-key1": "new-value1",
+        "new-key2": "new-value2",
+    })
+    secret.update()
+    secret.reload()
+
+    assert secret.data() == {
+        "new-key0": "new-value0",
+        "new-key1": "new-value1",
+        "new-key2": "new-value2",
+    }
+
+    secret.data({
+        "new-key0": "changed-value0",
+        "new-key1": "changed-value1",
+        "new-key2": "changed-value2",
+    })
     secret.update()
 
-    s1 = Secret("my-secret", "default").load()
-    assert s1.data() == {"some-key": "some-value"}
+    s = Secret(secret.name, "default").load()
+    assert s.data() == {
+        "new-key0": "changed-value0",
+        "new-key1": "changed-value1",
+        "new-key2": "changed-value2",
+    }
+
+
+def test_secret_values_are_updated_again(secret):
+    secret.data({
+        "new-key0": "new-value0",
+        "new-key1": "new-value1",
+        "new-key2": "new-value2",
+    })
+    secret.update()
+    secret.reload()
+
+    assert secret.data() == {
+        "new-key0": "new-value0",
+        "new-key1": "new-value1",
+        "new-key2": "new-value2",
+    }
+
+    secret.data({
+        "new-key0": "changed-value0",
+        "new-key1": None,
+        "new-key2": "changed-value2",
+    })
+    secret.update()
+    secret.reload()
+
+    assert secret.data() == {
+        "new-key0": "changed-value0",
+        "new-key2": "changed-value2",
+    }
 
 
 @pytest.fixture(scope="module")
