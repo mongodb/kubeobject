@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from base64 import b64decode
+from base64 import b64decode, b64encode
 from kubernetes import client
 
 from . import CustomObject
@@ -27,7 +27,10 @@ class GenericDataObject(CustomObject):
 
     def load(self):
         obj = self._read_fn(self.name, self.namespace)
-        self._data = obj.data
+        if obj.data is not None:
+            self._data = {k: self.deserialize(v) for k, v in obj.data.items()}
+        else:
+            self._data = {}
 
         self.backing_obj = obj
         self.bound = True
@@ -37,8 +40,8 @@ class GenericDataObject(CustomObject):
 
     def create(self):
         body = self._constructor(
+            data={k: self.serialize(v) for k, v in self._data.items()},
             metadata=client.V1ObjectMeta(name=self.name),
-            **self._data_update_param(),
         )
 
         obj = self._create_fn(self.namespace, body)
@@ -55,7 +58,8 @@ class GenericDataObject(CustomObject):
 
     def update(self):
         obj = self._constructor(
-            metadata=client.V1ObjectMeta(name=self.name), **self._data_update_param()
+            data={k: self.serialize(v) for k, v in self._data.items()},
+            metadata=client.V1ObjectMeta(name=self.name),
         )
 
         self.backing_obj = self._patch_fn(
@@ -67,9 +71,19 @@ class GenericDataObject(CustomObject):
             return self._data
 
         if not isinstance(_data, dict):
-            raise ValueError("data() expects a dictonary")
+            raise ValueError("data() expects a dictionary")
 
         self._data.update(_data)
+
+    def deserialize(self, val):
+        """deserialize returns the string representation of a value
+        as returned by the Kubernetes API. It needs to be implemented by
+        a subclass when required, for example, by `Secret` which needs
+        the data to be base64 decoded."""
+        return val
+
+    def serialize(self, val):
+        return val
 
     def _data_update_param(self):
         return {"data": self._data}
@@ -115,20 +129,25 @@ class Secret(GenericDataObject):
         self._patch_fn = self.api.patch_namespaced_secret
         self._constructor = client.V1Secret
 
-    def _data_update_param(self):
-        return {"string_data": self._data}
+    # def _data_update_param(self):
+    #     return {"string_data": self._data}
 
     def data(self, _data: dict = None):
         if _data is None:
-            return {
-                k: b64decode(v).decode("utf-8")
-                for (k, v) in self._data.items()
-            }
+            return self._data
 
         if not isinstance(_data, dict):
             raise ValueError("data() expects a dictonary")
 
         self._data.update(_data)
+
+    def deserialize(self, val):
+        return b64decode(val).decode("utf-8")
+
+    def serialize(self, val):
+        if val is None:
+            return val
+        return b64encode(val.encode('ascii')).decode()
 
 
 class Namespace(CustomObject):
