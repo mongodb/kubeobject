@@ -3,6 +3,7 @@ from datetime import datetime, timedelta
 import pytest
 from freezegun import freeze_time
 from unittest import mock
+from unittest.mock import MagicMock
 from types import SimpleNamespace
 
 from kubeobject.kubeobject import CustomObject
@@ -37,22 +38,26 @@ spec:
 def mocked_custom_api():
     stored_body = []
 
-    class MockedApi:
-        def get_namespaced_custom_object(group, version, namespace, plural, name):
-            if len(stored_body) > 0:
-                return stored_body[-1]
-            return {"name": name}
+    def get_namespaced_custom_object(group, version, namespace, plural, name):
+        if len(stored_body) > 0:
+            return stored_body[-1]
+        return {"name": name}
 
-        def create_namespaced_custom_object(group, version, namespace, plural, body: dict):
-            body.update({"name": body["metadata"]["name"]})
-            stored_body.append(body)
-            return body
+    def create_namespaced_custom_object(group, version, namespace, plural, body: dict):
+        body.update({"name": body["metadata"]["name"]})
+        stored_body.append(body)
+        return body
 
-        def patch_namespaced_custom_object(group, version, namespace, plural, name, body: dict):
-            stored_body.append(body)
-            return body
+    def patch_namespaced_custom_object(group, version, namespace, plural, name, body: dict):
+        stored_body.append(body)
+        return body
 
-    return MockedApi
+    base = MagicMock()
+    base.get_namespaced_custom_object = MagicMock(side_effect=get_namespaced_custom_object)
+    base.patch_namespaced_custom_object = MagicMock(side_effect=patch_namespaced_custom_object)
+    base.create_namespaced_custom_object = MagicMock(side_effect=create_namespaced_custom_object)
+
+    return base
 
 
 def mocked_crd_return_value():
@@ -64,18 +69,22 @@ def mocked_crd_return_value():
     )
 
 
-@mock.patch("kubeobject.kubeobject.client.CustomObjectsApi", return_value=mocked_custom_api())
+@mock.patch("kubeobject.kubeobject.client.CustomObjectsApi")
 @mock.patch("kubeobject.kubeobject.get_crd_names", return_value=mocked_crd_return_value())
 def test_custom_object_creation(mocked_get_crd_names, mocked_client):
-    custom = CustomObject("my-dummy-object", "my-dummy-namespace", kind="Dummy", group="dummy.com", version="v1").create()
+    mocked_client.return_value = mocked_custom_api()
+    custom = CustomObject(
+        "my-dummy-object", "my-dummy-namespace", kind="Dummy", group="dummy.com", version="v1"
+    ).create()
 
     # Test that __getitem__ is well implemented
     assert custom["name"] == "my-dummy-object"
 
 
-@mock.patch("kubeobject.kubeobject.client.CustomObjectsApi", return_value=mocked_custom_api())
+@mock.patch("kubeobject.kubeobject.client.CustomObjectsApi")
 @mock.patch("kubeobject.kubeobject.get_crd_names", return_value=mocked_crd_return_value())
 def test_custom_object_read_from_disk(mocked_get_crd_names, mocked_client):
+    mocked_client.return_value = mocked_custom_api()
     with mock.patch("kubeobject.kubeobject.open", mock.mock_open(read_data=yaml_data0), create=True) as m:
         custom = CustomObject.from_yaml("some-file.yaml")
         m.assert_called_once_with("some-file.yaml")
@@ -90,9 +99,10 @@ def test_custom_object_read_from_disk(mocked_get_crd_names, mocked_client):
         assert custom["spec"]["subDoc"]["anotherAttrStr"] == "value1"
 
 
-@mock.patch("kubeobject.kubeobject.client.CustomObjectsApi", return_value=mocked_custom_api())
+@mock.patch("kubeobject.kubeobject.client.CustomObjectsApi")
 @mock.patch("kubeobject.kubeobject.get_crd_names", return_value=mocked_crd_return_value())
 def test_custom_object_read_from_disk_with_dat_from_yaml(mocked_get_crd_names, mocked_client):
+    mocked_client.return_value = mocked_custom_api()
     with mock.patch("kubeobject.kubeobject.open", mock.mock_open(read_data=yaml_data0), create=True) as m:
         custom = CustomObject.from_yaml("some-file.yaml")
         m.assert_called_once_with("some-file.yaml")
@@ -116,9 +126,11 @@ def test_custom_object_read_from_disk_with_dat_from_yaml(mocked_get_crd_names, m
         assert custom.plural == "dummies"
 
 
-@mock.patch("kubeobject.kubeobject.client.CustomObjectsApi", return_value=mocked_custom_api())
+@mock.patch("kubeobject.kubeobject.client.CustomObjectsApi")
 @mock.patch("kubeobject.kubeobject.get_crd_names", return_value=mocked_crd_return_value())
 def test_custom_object_can_be_subclassed_create(mocked_crd_return_value, mocked_client):
+    mocked_client.return_value = mocked_custom_api()
+
     class Subklass(CustomObject):
         pass
 
@@ -127,9 +139,10 @@ def test_custom_object_can_be_subclassed_create(mocked_crd_return_value, mocked_
     assert a.__class__.__name__ == "Subklass"
 
 
-@mock.patch("kubeobject.kubeobject.client.CustomObjectsApi", return_value=mocked_custom_api())
+@mock.patch("kubeobject.kubeobject.client.CustomObjectsApi")
 @mock.patch("kubeobject.kubeobject.get_crd_names", return_value=mocked_crd_return_value())
 def test_custom_object_can_be_subclassed_from_yaml(mocked_crd_return_value, mocked_client):
+    mocked_client.return_value = mocked_custom_api()
     class Subklass(CustomObject):
         pass
 
@@ -140,9 +153,10 @@ def test_custom_object_can_be_subclassed_from_yaml(mocked_crd_return_value, mock
         assert a.__class__.__name__ == "Subklass"
 
 
-@mock.patch("kubeobject.kubeobject.client.CustomObjectsApi", return_value=mocked_custom_api())
+@mock.patch("kubeobject.kubeobject.client.CustomObjectsApi")
 @mock.patch("kubeobject.kubeobject.get_crd_names", return_value=mocked_crd_return_value())
 def test_custom_object_defined(mocked_crd_return_value, mocked_client):
+    mocked_client.return_value = mocked_custom_api()
     klass = CustomObject.define("Dummy", plural="dummies", group="dummy.com", version="v1")
 
     k = klass("my-dummy", "default").create()
@@ -153,8 +167,9 @@ def test_custom_object_defined(mocked_crd_return_value, mocked_client):
     assert repr(k) == "Dummy('my-dummy', 'default')"
 
 
-@mock.patch("kubeobject.kubeobject.client.CustomObjectsApi", return_value=mocked_custom_api())
+@mock.patch("kubeobject.kubeobject.client.CustomObjectsApi")
 def test_defined_wont_require_api_if_all_parameteres_are_provided(mocked_client):
+    mocked_client.return_value = mocked_custom_api()
     BaseKlass = CustomObject.define("Dummy", kind="Dummy", plural="dummies", group="dummy.com", version="v1")
 
     class SubKlass(BaseKlass):
@@ -170,16 +185,22 @@ def test_defined_wont_require_api_if_all_parameteres_are_provided(mocked_client)
     assert k.get_spec() == {"testAttr": "value"}
 
 
-@mock.patch("kubeobject.kubeobject.client.CustomObjectsApi", return_value=mocked_custom_api())
+@mock.patch("kubeobject.kubeobject.client.CustomObjectsApi")
 @mock.patch("kubeobject.kubeobject.get_crd_names", return_value=mocked_crd_return_value())
 def test_custom_object_auto_reload(mocked_get_crd_names, mocked_client):
-    klass = CustomObject.define("Dummy", plural="dummies", group="dummy.com", version="v1")
+    instance = mocked_custom_api()
+    mocked_client.return_value = instance
 
+    klass = CustomObject.define("Dummy", plural="dummies", group="dummy.com", version="v1")
     k = klass("my-dummy", "default")
+
     assert k.last_update is None
 
     k["status"] = "something"
     k.create()
+
+    # first call is initialization of the class, second is `create_`
+    assert len(mocked_client.mock_calls) == 2
     assert k.last_update is not None
 
     k.auto_reload = True
@@ -192,10 +213,14 @@ def test_custom_object_auto_reload(mocked_get_crd_names, mocked_client):
         k["status"]
         assert k.last_update == last_update_recorded
 
+        assert len(mocked_client.mock_calls) == 2
+
     # If getting the status after 2.1 seconds, we reload!
     with freeze_time(datetime.now() + timedelta(milliseconds=2100)):
         k["status"]
         assert k.last_update > last_update_recorded
+
+        assert len(mocked_client.mock_calls) == 3
 
 
 def test_raises_if_no_name():
@@ -215,3 +240,9 @@ def test_name_is_set_as_argument(_):
     # TODO: what is this test supposed to do?
     with mock.patch("kubeobject.kubeobject.open", mock.mock_open(read_data=yaml_data1), create=True) as _:
         CustomObject.from_yaml("some-other-file.yaml", name="some-name", namespace="some-namespace")
+
+
+@mock.patch("kubeobject.kubeobject.client.CustomObjectsApi")
+def test_called_when_updating(mocked_client):
+    mocked_client.return_value = mocked_custom_api()
+    assert True
