@@ -217,7 +217,7 @@ class CustomObject:
         body = client.V1DeleteOptions()
 
         api.delete_namespaced_custom_object(
-            self.group, self.version, self.namespace, self.plural, self.name, body
+            self.group, self.version, self.namespace, self.plural, self.name, body=body
         )
 
         self._register_updated()
