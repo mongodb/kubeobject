@@ -5,6 +5,110 @@ from datetime import datetime, timedelta
 from typing import Optional
 
 from kubernetes import client
+from kubernetes.client.api import ApiextensionsV1Api, CustomObjectsApi
+
+from box import Box
+
+from kubeobject.exceptions import ObjectNotBoundException
+
+
+class KubeObject(object):
+    BACKING_OBJ = "__backing_obj"
+
+    def __init__(
+        self,
+        group: str,
+        version: str,
+        plural: str,
+    ):
+        self.init_attributes()
+
+        # And now we initialize it with actual values, so we know over what kind
+        # of object to operate.
+        self.__dict__["crd"] = {"plural": plural, "group": group, "version": version}
+
+    def init_attributes(self):
+        """This is separated from __init__ because here we initialize empty attributes of
+        KubeObject instance, but we don't incorporate business logic."""
+
+        # Initialize an "empty" CRD, which means that this object is not bound
+        # to an specific CRD.
+        self.__dict__["crd"] = {}
+
+        # A KubeObject is bound when it is pointing at a given CRD on a name/namespace
+        self.__dict__["bound"] = {}
+
+        # This is the object that will contain the definition of the Custom Object when bound
+        self.__dict__[KubeObject.BACKING_OBJ] = Box()
+
+        # Set an API to work with.
+        # TODO: Allow for a better experience; api could be defined from env variables,
+        # in_cluster or whatever. See if this is needed. Can we run our samples with
+        # in_cluster, or based on different clusters pointed at by env variables?
+        self.__dict__["api"] = CustomObjectsApi()
+
+    def read(self, name: str, namespace: str):
+        print(self.crd)
+        obj = self.api.get_namespaced_custom_object(
+            name=name, namespace=namespace, **self.crd
+        )
+
+        setattr(self, KubeObject.BACKING_OBJ, Box(obj))
+        self.__dict__["bound"] = True
+        self.__dict__["name"] = obj["metadata"]["name"]
+        self.__dict__["namespace"] = obj["metadata"]["namespace"]
+
+        return self
+
+    def update(self):
+        if not self.bound:
+            # there's no corresponding object in the Kubernetes cluster
+            raise ObjectNotBoundException
+
+        obj = self.api.patch_namespaced_custom_object(
+            name=self.name,
+            namespace=self.namespace,
+            **self.crd,
+            body=self.__dict__[KubeObject.BACKING_OBJ].to_dict()
+        )
+
+        setattr(self, KubeObject.BACKING_OBJ, Box(obj))
+
+        return self
+
+    def __setattr__(self, item, value):
+        if item.startswith("__"):
+            self.__dict__[item] = value
+        else:
+            self.__dict__[KubeObject.BACKING_OBJ][item] = value
+
+    def __getattr__(self, item):
+        if item not in self.__dict__[KubeObject.BACKING_OBJ]:
+            raise AttributeError(item)
+
+        return getattr(self.__dict__[KubeObject.BACKING_OBJ], item)
+
+    def __getitem__(self, key):
+        """Similar to what dot notation (getattr) produces, but this
+        will get the dictionary that corresponds to that attribute."""
+        d = self.__getattr__(key)
+        if isinstance(d, Box):
+            return d.to_dict()
+
+        return d
+
+
+def create_custom_object(name: str, api=None) -> KubeObject:
+    """This function returns a Class type that can be used to initialize
+    custom objects of the type name."""
+
+    # Get the full name from the API
+    # Kind is not used, but it should be stored somewhere in case we want
+    # to pretty print this object or something.
+    _kind, plural, group, version = full_crd_name(name, api)
+
+    # To be able to work with the objects we only need group, version and plural
+    return KubeObject(group, version, plural)
 
 
 class CustomObject:
@@ -30,6 +134,10 @@ class CustomObject:
         self.namespace = namespace
 
         if plural is None or kind is None or group is None or version is None:
+            # It is posible to have a CustomObject where some of the initial values are set
+            # to None. For instance when instantiating CustomObject from a yaml file (from_yaml).
+            # In this case, we need to look for the rest of the parameters from the
+            # apiextensions Kubernetes API.
             crd = get_crd_names(plural=plural, kind=kind, group=group, version=version)
             self.kind = crd.spec.names.kind
             self.plural = crd.spec.names.plural
@@ -64,11 +172,13 @@ class CustomObject:
         # Sets the API used for this particular type of object
         self.api = client.CustomObjectsApi()
 
-        if not hasattr(self, 'backing_obj'):
+        if not hasattr(self, "backing_obj"):
             self.backing_obj = {
                 "metadata": {"name": name, "namespace": namespace},
                 "kind": self.kind,
                 "apiVersion": "/".join(filter(None, [group, version])),
+                "spec": {},
+                "status": {},
             }
 
     def load(self) -> CustomObject:
@@ -145,7 +255,9 @@ class CustomObject:
                 "or exist in the `metadata` section of the yaml document."
             )
 
-        if (namespace is None or namespace == "") and "namespace" not in doc["metadata"]:
+        if (namespace is None or namespace == "") and "namespace" not in doc[
+            "metadata"
+        ]:
             raise ValueError(
                 "`namespace` needs to be passed as part of the function call "
                 "or exist in the `metadata` section of the yaml document."
@@ -179,7 +291,14 @@ class CustomObject:
         return obj
 
     @classmethod
-    def define(cls, name, kind=None, plural=None, group=None, version=None):
+    def define(
+        cls: CustomObject,
+        name: str,
+        kind: str = None,
+        plural: str = None,
+        group: str = None,
+        version: str = None,
+    ):
         """Defines a new class that will hold a particular type of object.
 
         This is meant to be used as a quick replacement for
@@ -191,7 +310,13 @@ class CustomObject:
 
         def __init__(self, name, namespace, **kwargs):
             CustomObject.__init__(
-                self, name, namespace, kind=kind, plural=plural, group=group, version=version
+                self,
+                name,
+                namespace,
+                kind=kind,
+                plural=plural,
+                group=group,
+                version=version,
             )
 
         def __repr__(self):
@@ -203,12 +328,12 @@ class CustomObject:
 
         return type(
             name,
-            (CustomObject, ),
+            (CustomObject,),
             {
                 "object_names_initialized": True,
                 "__init__": __init__,
                 "__repr__": __repr__,
-            }
+            },
         )
 
     def delete(self):
@@ -225,6 +350,12 @@ class CustomObject:
     def reload(self):
         """Reloads the object from the Kubernetes API."""
         return self.load()
+
+    # def __getattr__(self, key):
+    #     if key == "backing_obj":
+    #         return getattr(self, key)
+
+    #     self.backing_obj.key
 
     def __getitem__(self, key):
         self._reload_if_needed()
@@ -244,6 +375,9 @@ class CustomObject:
 
 def get_crd_names(plural=None, kind=None, group=None, version=None) -> Optional[dict]:
     """Gets the CRD entry that matches all the parameters passed."""
+    #
+    # TODO: Update to `client.ApiextensionsV1Api()`
+    #
     api = client.ApiextensionsV1beta1Api()
 
     if plural == kind == group == version is None:
@@ -270,3 +404,23 @@ def get_crd_names(plural=None, kind=None, group=None, version=None) -> Optional[
 
         if found:
             return crd
+
+
+def full_crd_name(
+    name: str, api: Optional[ApiextensionsV1Api] = None
+) -> Tuple[str, str, str, str, str]:
+    """Fetches this CRD from the kubernetes API by name and returns its
+    name, kind, plural, group and version."""
+    if api is None:
+        # Use default (already configured) client
+        api = client.ApiextensionsV1Api()
+
+    # The name here is something like: resource.group (dummy.example.com)
+    response = api.read_custom_resource_definition(name)
+
+    group = response.spec.group
+    kind = response.spec.names.kind
+    plural = response.spec.names.plural
+    version = [v.name for v in response.spec.versions if v.served][0]
+
+    return (kind, plural, group, version)

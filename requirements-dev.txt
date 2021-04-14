@@ -1,6 +1,6 @@
 -r requirements-test.txt
-jedi
-rope
-black
-flake8
-autopep8
+jedi==0.18.0
+rope==0.18.0
+flake8==3.9.0
+autopep8==1.5.6
+black==20.8b1
