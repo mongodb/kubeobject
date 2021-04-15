@@ -2,271 +2,223 @@ from __future__ import annotations
 
 import yaml
 from datetime import datetime, timedelta
-from typing import Optional
+from typing import Optional, Union, TextIO
+import io
+import copy
 
 from kubernetes import client
+from kubernetes.client.api import ApiextensionsV1Api, CustomObjectsApi
+
+from box import Box
+
+from kubeobject.exceptions import ObjectNotBoundException
 
 
-class CustomObject:
-    """CustomObject is an object mapping to a Custom Resource in Kubernetes. It
-    includes simple facilities to update the Custom Resource, save it and
-    reload its state in a object oriented manner.
-
-    It is meant to be used to apply changes to Custom Resources and watch their
-    state as it is updated by a controller; an Operator in Kubernetes parlance.
-
-    """
+class KubeObject(object):
+    BACKING_OBJ = "__backing_obj"
 
     def __init__(
         self,
-        name: str,
-        namespace: str,
-        kind: str = None,
-        plural: str = None,
-        group: str = None,
-        version: str = None,
+        group: str,
+        version: str,
+        plural: str,
     ):
-        self.name = name
-        self.namespace = namespace
+        self.init_attributes()
 
-        if plural is None or kind is None or group is None or version is None:
-            crd = get_crd_names(plural=plural, kind=kind, group=group, version=version)
-            self.kind = crd.spec.names.kind
-            self.plural = crd.spec.names.plural
-            self.group = crd.spec.group
-            self.version = crd.spec.version
-        else:
-            self.kind = kind
-            self.plural = plural
-            self.group = group
-            self.version = version
+        # And now we initialize it with actual values, so we know over what kind
+        # of object to operate.
+        self.__dict__["crd"] = {"plural": plural, "group": group, "version": version}
 
-        # True if this object is backed by a Kubernetes object, this is, it has
-        # been loaded or saved from/to Kubernetes API.
-        self.bound = False
+    def init_attributes(self):
+        """This is separated from __init__ because here we initialize empty attributes of
+        KubeObject instance, but we don't incorporate business logic."""
 
-        # Set to True if the object needs to be updated every time one of its
-        # attributes is changed.
-        self.auto_save = False
+        # Initialize an "empty" CRD, which means that this object is not bound
+        # to an specific CRD.
+        self.__dict__["crd"] = {}
+
+        # A KubeObject is bound when it is pointing at a given CRD on a name/namespace
+        self.__dict__["bound"] = {}
+
+        # This is the object that will contain the definition of the Custom Object when bound
+        self.__dict__[KubeObject.BACKING_OBJ] = Box()
+
+        # Set an API to work with.
+        # TODO: Allow for a better experience; api could be defined from env variables,
+        # in_cluster or whatever. See if this is needed. Can we run our samples with
+        # in_cluster, or based on different clusters pointed at by env variables?
+        self.__dict__["api"] = CustomObjectsApi()
 
         # Set `auto_reload` to `True` if it needs to be reloaded before every
         # read of an attribute. This considers the `auto_reload_period`
         # attribute at the same time.
-        self.auto_reload = False
+        self.auto_reload: bool = False
 
         # If `auto_reload` is set, it will not reload if less time than
         # `auto_reload_period` has passed since last read.
         self.auto_reload_period = timedelta(seconds=2)
 
         # Last time this object was updated
-        self.last_update: datetime = None
+        self.last_update: Optional[datetime] = None
 
-        # Sets the API used for this particular type of object
-        self.api = client.CustomObjectsApi()
-
-        if not hasattr(self, 'backing_obj'):
-            self.backing_obj = {
-                "metadata": {"name": name, "namespace": namespace},
-                "kind": self.kind,
-                "apiVersion": "/".join(filter(None, [group, version])),
-            }
-
-    def load(self) -> CustomObject:
-        """Loads this object from the API."""
-
-        obj = self.api.get_namespaced_custom_object(
-            self.group, self.version, self.namespace, self.plural, self.name
-        )
-
-        self.backing_obj = obj
-        self.bound = True
-
-        self._register_updated()
-        return self
-
-    def create(self) -> CustomObject:
-        """Creates this object in Kubernetes."""
-        obj = self.api.create_namespaced_custom_object(
-            self.group, self.version, self.namespace, self.plural, self.backing_obj
-        )
-
-        self.backing_obj = obj
-        self.bound = True
-
-        self._register_updated()
-        return self
-
-    def update(self) -> CustomObject:
-        """Updates the object in Kubernetes."""
-        obj = self.api.patch_namespaced_custom_object(
-            self.group,
-            self.version,
-            self.namespace,
-            self.plural,
-            self.name,
-            self.backing_obj,
-        )
-
-        self.backing_obj = obj
-
-        self._register_updated()
-        return self
-
-    def _register_updated(self):
-        """Register the last time the object was updated from Kubernetes."""
+    def _register_update(self):
         self.last_update = datetime.now()
 
     def _reload_if_needed(self):
-        """Reloads the object is `self.auto_reload` is set to `True` and more than
-        `self.auto_reload_period` time has passed since last reload."""
         if not self.auto_reload:
             return
 
         if self.last_update is None:
-            self.reload()
+            self.load()
 
         if datetime.now() - self.last_update > self.auto_reload_period:
-            self.reload()
+            self.load()
 
-    @classmethod
-    def from_yaml(cls, yaml_file, name=None, namespace=None):
-        """Creates a `CustomObject` from a yaml file. In this case, `name` and
-        `namespace` are optional in this function's signature, because they
-        might be passed as part of the `yaml_file` document.
-        """
-        doc = yaml.safe_load(open(yaml_file))
-
-        if "metadata" not in doc:
-            doc["metadata"] = dict()
-
-        if (name is None or name == "") and "name" not in doc["metadata"]:
-            raise ValueError(
-                "`name` needs to be passed as part of the function call "
-                "or exist in the `metadata` section of the yaml document."
-            )
-
-        if (namespace is None or namespace == "") and "namespace" not in doc["metadata"]:
-            raise ValueError(
-                "`namespace` needs to be passed as part of the function call "
-                "or exist in the `metadata` section of the yaml document."
-            )
-
-        if name is None:
-            name = doc["metadata"]["name"]
-        else:
-            doc["metadata"]["name"] = name
-
-        if namespace is None:
-            namespace = doc["metadata"]["namespace"]
-        else:
-            doc["metadata"]["namespace"] = namespace
-
-        kind = doc["kind"]
-        api_version = doc["apiVersion"]
-        if "/" in api_version:
-            group, version = api_version.split("/")
-        else:
-            group = None
-            version = api_version
-
-        if getattr(cls, "object_names_initialized", False):
-            obj = cls(name, namespace)
-        else:
-            obj = cls(name, namespace, kind=kind, group=group, version=version)
-
-        obj.backing_obj = doc
-
-        return obj
-
-    @classmethod
-    def define(cls, name, kind=None, plural=None, group=None, version=None):
-        """Defines a new class that will hold a particular type of object.
-
-        This is meant to be used as a quick replacement for
-        CustomObject if needed, but not extensive control or behaviour
-        needs to be implemented. If your particular use case requires more
-        control or more complex behaviour on top of the CustomObject class,
-        consider subclassing it.
-        """
-
-        def __init__(self, name, namespace, **kwargs):
-            CustomObject.__init__(
-                self, name, namespace, kind=kind, plural=plural, group=group, version=version
-            )
-
-        def __repr__(self):
-            return "{klass_name}({name}, {namespace})".format(
-                klass_name=name,
-                name=repr(self.name),
-                namespace=repr(self.namespace),
-            )
-
-        return type(
-            name,
-            (CustomObject, ),
-            {
-                "object_names_initialized": True,
-                "__init__": __init__,
-                "__repr__": __repr__,
-            }
+    def read(self, name: str, namespace: str):
+        obj = self.api.get_namespaced_custom_object(
+            name=name, namespace=namespace, **self.crd
         )
+
+        self.__dict__[KubeObject.BACKING_OBJ] = Box(obj)
+        self.__dict__["bound"] = True
+        self.__dict__["name"] = obj["metadata"]["name"]
+        self.__dict__["namespace"] = obj["metadata"]["namespace"]
+
+        self._register_update()
+        return self
+
+    def update(self):
+        if not self.bound:
+            # there's no corresponding object in the Kubernetes cluster
+            raise ObjectNotBoundException
+
+        obj = self.api.patch_namespaced_custom_object(
+            name=self.name,
+            namespace=self.namespace,
+            **self.crd,
+            body=self.__dict__[KubeObject.BACKING_OBJ].to_dict(),
+        )
+
+        self.__dict__[KubeObject.BACKING_OBJ] = Box(obj)
+        self._register_update()
+
+        return self
 
     def delete(self):
-        """Deletes the object from Kubernetes."""
-        api = client.CustomObjectsApi()
-        body = client.V1DeleteOptions()
+        if not self.bound:
+            raise ObjectNotBoundException
 
-        api.delete_namespaced_custom_object(
-            self.group, self.version, self.namespace, self.plural, self.name, body=body
+        # TODO: body is supposed to be client.V1DeleteOptions()
+        # but for now we are just passing the empty dict.
+
+        self.api.delete_namespaced_custom_object(
+            name=self.name,
+            namespace=self.namespace,
+            body={},
+            **self.crd,
         )
 
-        self._register_updated()
+        self._register_update()
+        # Not bound any more!
+        self.bound = False
 
-    def reload(self):
-        """Reloads the object from the Kubernetes API."""
-        return self.load()
+    def create(
+        self,
+    ) -> KubeObject:
+        """Attempts to create an object using the Kubernetes API. This object needs to
+        have been defined first! This is a complete metadata, spec or any other fields
+        need to have been populated first."""
+        api: CustomObjectsApi = self.api
+
+        obj = api.create_namespaced_custom_object(
+            namespace=self.namespace,
+            **self.crd,
+            body=self.__dict__[KubeObject.BACKING_OBJ].to_dict(),
+        )
+
+        # This object has been bound to an existing object in Kube
+        self.bound = True
+        self._register_update()
+
+        return self
+
+    def read_from_yaml_file(self, object_definition: TextIO):
+        return self._read_from(object_definition)
+
+    def read_from_dict(self, object_definition: dict):
+        return self._read_from(object_definition)
+
+    def _read_from(self, object_definition=Union[TextIO, dict]):
+        """Populates this object from object_definition.
+
+        * type(io.IOBase): opens the file and reads a yaml doc from it
+        * type(dict): Uses it as backing_object
+        """
+        if isinstance(object_definition, io.IOBase):
+            obj = yaml.safe_load(object_definition.read())
+        elif isinstance(object_definition, dict):
+            obj = copy.deepcopy(object_definition)
+        else:
+            raise ValueError("argument should be a file-like object or a dict")
+
+        self.__dict__[KubeObject.BACKING_OBJ] = Box(obj)
+        self.__dict__["bound"] = False
+
+        return self
+
+    def __setattr__(self, item, value):
+        if item.startswith("__"):
+            self.__dict__[item] = value
+        else:
+            self.__dict__[KubeObject.BACKING_OBJ][item] = value
+
+    def __getattr__(self, item):
+        if item not in self.__dict__[KubeObject.BACKING_OBJ]:
+            raise AttributeError(item)
+
+        return getattr(self.__dict__[KubeObject.BACKING_OBJ], item)
 
     def __getitem__(self, key):
-        self._reload_if_needed()
+        """Similar to what dot notation (getattr) produces, but this
+        will get the dictionary that corresponds to that attribute."""
+        d = self.__getattr__(key)
+        if isinstance(d, Box):
+            return d.to_dict()
 
-        return self.backing_obj[key]
+        return d
 
-    def __contains__(self, key):
-        self._reload_if_needed()
-        return key in self.backing_obj
-
-    def __setitem__(self, key, val):
-        self.backing_obj[key] = val
-
-        if self.bound and self.auto_save:
-            self.update()
+    def to_dict(self):
+        return self.__dict__[KubeObject.BACKING_OBJ].to_dict()
 
 
-def get_crd_names(plural=None, kind=None, group=None, version=None) -> Optional[dict]:
-    """Gets the CRD entry that matches all the parameters passed."""
-    api = client.ApiextensionsV1beta1Api()
+def create_custom_object(name: str, api=None) -> KubeObject:
+    """This function returns a Class type that can be used to initialize
+    custom objects of the type name."""
 
-    if plural == kind == group == version is None:
-        return None
+    # Get the full name from the API
+    # Kind is not used, but it should be stored somewhere in case we want
+    # to pretty print this object or something.
+    _kind, plural, group, version = full_crd_name(name, api)
 
-    crds = api.list_custom_resource_definition()
-    for crd in crds.items:
-        found = True
-        if group != "":
-            if crd.spec.group != group:
-                found = False
+    # To be able to work with the objects we only need group, version and plural
+    return KubeObject(group, version, plural)
 
-        if version != "":
-            if crd.spec.version != version:
-                found = False
 
-        if kind is not None:
-            if crd.spec.names.kind != kind:
-                found = False
+def full_crd_name(
+    name: str, api: Optional[ApiextensionsV1Api] = None
+) -> Tuple[str, str, str, str, str]:
+    """Fetches this CRD from the kubernetes API by name and returns its
+    name, kind, plural, group and version."""
+    if api is None:
+        # Use default (already configured) client
+        api = client.ApiextensionsV1Api()
 
-        if plural is not None:
-            if crd.spec.names.plural != plural:
-                found = False
+    # The name here is something like: resource.group (dummy.example.com)
+    response = api.read_custom_resource_definition(name)
 
-        if found:
-            return crd
+    group = response.spec.group
+    kind = response.spec.names.kind
+    plural = response.spec.names.plural
+    version = [v.name for v in response.spec.versions if v.served][0]
+
+    return (kind, plural, group, version)
