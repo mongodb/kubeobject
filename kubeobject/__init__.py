@@ -2,7 +2,8 @@ import random
 from string import ascii_lowercase, digits
 
 
-from .kubeobject import CustomObject, get_crd_names, KubeObject, create_custom_object
+from .kubeobject import KubeObject, create_custom_object
+from .customobject import CustomObject
 from .serviceaccount import ServiceAccount
 from .role import build_rules_from_yaml, Role, RoleBinding
 from .deployment import Deployment
