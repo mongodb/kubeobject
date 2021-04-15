@@ -1,4 +1,5 @@
 import copy
+import io
 
 import pytest
 from unittest.mock import MagicMock, Mock, create_autospec, patch, call
@@ -188,6 +189,10 @@ class MockedCustomObjectsApi:
 
         return body
 
+    @staticmethod
+    def delete_namespaced_custom_object(group, version, namespace, plural, name, body):
+        MockedCustomObjectsApi.store = {}
+
 
 @patch("kubeobject.kubeobject.CustomObjectsApi")
 def test_can_read_and_update(patched_custom_objects_api: Mock):
@@ -244,6 +249,53 @@ def test_can_read_and_update(patched_custom_objects_api: Mock):
     api.get_namespaced_custom_object.assert_has_calls(read_calls)
 
     assert c1.spec.thisAttribute == "fourty three"
+
+
+@patch("kubeobject.kubeobject.CustomObjectsApi")
+def test_can_read_delete(patched_custom_objects_api: Mock):
+    api = Mock(wraps=MockedCustomObjectsApi)
+    patched_custom_objects_api.return_value = api
+
+    C = KubeObject("example.com", "v1", "dummies")
+    c = C.read("my-dummy-object", "default")
+
+    api.get_namespaced_custom_object.assert_called_once()
+
+    c.delete()
+    api.delete_namespaced_custom_object.assert_called_once_with(
+        group="example.com",
+        version="v1",
+        namespace="default",
+        plural="dummies",
+        name="my-dummy-object",
+        body={},
+    )
+
+
+@patch("kubeobject.kubeobject.CustomObjectsApi")
+def test_read_from_yaml_file(patched_custom_objects_api: Mock):
+    api = Mock(wraps=MockedCustomObjectsApi)
+    patched_custom_objects_api.return_value = api
+
+    y = """
+---
+apiVersion: kubeobject.com/v1
+kind: Dummy
+metadata:
+  name: my-dummy-object
+spec:
+  thisAttribute: "eighty one"
+    """
+    # we mock the file with a io.StringIO which acts like a file object.
+    yaml_file = io.StringIO(y)
+
+    C = KubeObject("example.com", "v1", "dummies")
+    c = C.read_from_yaml_file(yaml_file)
+
+    assert c.metadata.name == "my-dummy-object"
+    assert c.spec.thisAttribute == "eighty one"
+    assert c.apiVersion == "kubeobject.com/v1"
+    assert c.kind == "Dummy"
 
 
 @pytest.mark.skip

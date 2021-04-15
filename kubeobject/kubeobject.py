@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import yaml
 from datetime import datetime, timedelta
-from typing import Optional
+from typing import Optional, Union, TextIO
+import io
+import copy
 
 from kubernetes import client
 from kubernetes.client.api import ApiextensionsV1Api, CustomObjectsApi
@@ -48,12 +50,11 @@ class KubeObject(object):
         self.__dict__["api"] = CustomObjectsApi()
 
     def read(self, name: str, namespace: str):
-        print(self.crd)
         obj = self.api.get_namespaced_custom_object(
             name=name, namespace=namespace, **self.crd
         )
 
-        setattr(self, KubeObject.BACKING_OBJ, Box(obj))
+        self.__dict__[KubeObject.BACKING_OBJ] = Box(obj)
         self.__dict__["bound"] = True
         self.__dict__["name"] = obj["metadata"]["name"]
         self.__dict__["namespace"] = obj["metadata"]["namespace"]
@@ -69,10 +70,68 @@ class KubeObject(object):
             name=self.name,
             namespace=self.namespace,
             **self.crd,
-            body=self.__dict__[KubeObject.BACKING_OBJ].to_dict()
+            body=self.__dict__[KubeObject.BACKING_OBJ].to_dict(),
         )
 
-        setattr(self, KubeObject.BACKING_OBJ, Box(obj))
+        self.__dict__[KubeObject.BACKING_OBJ] = Box(obj)
+
+        return self
+
+    def delete(self):
+        if not self.bound:
+            raise ObjectNotBoundException
+
+        # TODO: body is supposed to be client.V1DeleteOptions()
+        # but for now we are just passing the empty dict.
+
+        self.api.delete_namespaced_custom_object(
+            name=self.name,
+            namespace=self.namespace,
+            body={},
+            **self.crd,
+        )
+
+        # Not bound any more!
+        self.bound = False
+
+    def create(
+        self,
+    ) -> KubeObject:
+        """Attempts to create an object using the Kubernetes API. This object needs to
+        have been defined first! This is a complete metadata, spec or any other fields
+        need to have been populated first."""
+        api: CustomObjectsApi = self.api
+
+        obj = api.create_namespaced_custom_object(
+            namespace=self.namespace,
+            **self.crd,
+            body=self.__dict__[KubeObject.BACKING_OBJ].to_dict(),
+        )
+
+        # This object has been bound to an existing object in Kube
+        self.bound = True
+
+    def read_from_yaml_file(self, object_definition: TextIO):
+        return self._read_from(object_definition)
+
+    def read_from_dict(self, object_definition: dict):
+        return self._read_from(object_definition)
+
+    def _read_from(self, object_definition=Union[TextIO, dict]):
+        """Populates this object from object_definition.
+
+        * type(io.IOBase): opens the file and reads a yaml doc from it
+        * type(dict): Uses it as backing_object
+        """
+        if isinstance(object_definition, io.IOBase):
+            obj = yaml.safe_load(object_definition.read())
+        elif isinstance(object_definition, dict):
+            obj = copy.deepcopy(object_definition)
+        else:
+            raise ValueError("argument should be a file-like object or a dict")
+
+        self.__dict__[KubeObject.BACKING_OBJ] = Box(obj)
+        self.__dict__["bound"] = False
 
         return self
 
