@@ -8,7 +8,7 @@ from kubeobject import KubeObject, create_custom_object
 
 from kubernetes import config, client
 
-config.load_kube_config()
+# config.load_kube_config()
 
 
 def test_box0():
@@ -128,6 +128,7 @@ def test_kubeobject1():
         some = Some.read("some-name", "namespace")
 
 
+@pytest.mark.skip
 @patch("kubeobject.kubeobject.CustomObjectsApi")
 def test_can_create_objects(patched_custom_objects_api: Mock):
     api = Mock()
@@ -149,6 +150,7 @@ def test_can_create_objects(patched_custom_objects_api: Mock):
     assert isinstance(c["spec"], dict)
 
 
+@pytest.mark.skip
 def test_can_read_my_dummy_object():
     """In order to run this test, examples/dummy.yaml needs to be applied"""
     D = create_custom_object("dummies.kubeobject.com")
