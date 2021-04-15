@@ -1,6 +1,7 @@
 import copy
 import io
 
+import yaml
 import pytest
 from unittest.mock import MagicMock, Mock, create_autospec, patch, call
 from box import Box
@@ -296,6 +297,10 @@ spec:
     assert c.spec.thisAttribute == "eighty one"
     assert c.apiVersion == "kubeobject.com/v1"
     assert c.kind == "Dummy"
+
+    as_dict = yaml.safe_load(y)
+
+    assert c.to_dict() == as_dict
 
 
 @pytest.mark.skip

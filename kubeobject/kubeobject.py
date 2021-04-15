@@ -49,6 +49,31 @@ class KubeObject(object):
         # in_cluster, or based on different clusters pointed at by env variables?
         self.__dict__["api"] = CustomObjectsApi()
 
+        # Set `auto_reload` to `True` if it needs to be reloaded before every
+        # read of an attribute. This considers the `auto_reload_period`
+        # attribute at the same time.
+        self.auto_reload: bool = False
+
+        # If `auto_reload` is set, it will not reload if less time than
+        # `auto_reload_period` has passed since last read.
+        self.auto_reload_period = timedelta(seconds=2)
+
+        # Last time this object was updated
+        self.last_update: Optional[datetime] = None
+
+    def _register_update(self):
+        self.last_update = datetime.now()
+
+    def _reload_if_needed(self):
+        if not self.auto_reload:
+            return
+
+        if self.last_update is None:
+            self.load()
+
+        if datetime.now() - self.last_update > self.auto_reload_period:
+            self.load()
+
     def read(self, name: str, namespace: str):
         obj = self.api.get_namespaced_custom_object(
             name=name, namespace=namespace, **self.crd
@@ -59,6 +84,7 @@ class KubeObject(object):
         self.__dict__["name"] = obj["metadata"]["name"]
         self.__dict__["namespace"] = obj["metadata"]["namespace"]
 
+        self._register_update()
         return self
 
     def update(self):
@@ -74,6 +100,7 @@ class KubeObject(object):
         )
 
         self.__dict__[KubeObject.BACKING_OBJ] = Box(obj)
+        self._register_update()
 
         return self
 
@@ -91,6 +118,7 @@ class KubeObject(object):
             **self.crd,
         )
 
+        self._register_update()
         # Not bound any more!
         self.bound = False
 
@@ -110,6 +138,9 @@ class KubeObject(object):
 
         # This object has been bound to an existing object in Kube
         self.bound = True
+        self._register_update()
+
+        return self
 
     def read_from_yaml_file(self, object_definition: TextIO):
         return self._read_from(object_definition)
@@ -155,6 +186,9 @@ class KubeObject(object):
             return d.to_dict()
 
         return d
+
+    def to_dict(self):
+        return self.__dict__[KubeObject.BACKING_OBJ].to_dict()
 
 
 def create_custom_object(name: str, api=None) -> KubeObject:
