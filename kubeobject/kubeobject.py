@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 import yaml
 from datetime import datetime, timedelta
 from typing import Optional, Union, TextIO
@@ -41,7 +42,7 @@ class KubeObject(object):
         self.__dict__["bound"] = {}
 
         # This is the object that will contain the definition of the Custom Object when bound
-        self.__dict__[KubeObject.BACKING_OBJ] = Box()
+        self.__dict__[KubeObject.BACKING_OBJ] = Box(default_box=True)
 
         # Set an API to work with.
         # TODO: Allow for a better experience; api could be defined from env variables,
@@ -52,34 +53,39 @@ class KubeObject(object):
         # Set `auto_reload` to `True` if it needs to be reloaded before every
         # read of an attribute. This considers the `auto_reload_period`
         # attribute at the same time.
-        self.auto_reload: bool = False
+        self.__dict__["auto_reload"]: bool = False
 
         # If `auto_reload` is set, it will not reload if less time than
         # `auto_reload_period` has passed since last read.
-        self.auto_reload_period = timedelta(seconds=2)
+        self.__dict__["auto_reload_period"] = timedelta(seconds=2)
 
         # Last time this object was updated
-        self.last_update: Optional[datetime] = None
+        self.__dict__["last_update"]: Optional[datetime] = None
+
+        # These attributes need to be set in order to read the object (as in reload)
+        # back from the API.
+        self.__dict__["name"]: str = None
+        self.__dict__["namespace"]: str = None
 
     def _register_update(self):
         self.last_update = datetime.now()
 
     def _reload_if_needed(self):
-        if not self.auto_reload:
+        if not self.auto_reload or not self.bound:
             return
 
-        if self.last_update is None:
-            self.load()
-
-        if datetime.now() - self.last_update > self.auto_reload_period:
-            self.load()
+        if (
+            self.last_update is None
+            or datetime.now() - self.last_update > self.auto_reload_period
+        ):
+            self.read(name=self.name, namespace=self.namespace)
 
     def read(self, name: str, namespace: str):
         obj = self.api.get_namespaced_custom_object(
             name=name, namespace=namespace, **self.crd
         )
 
-        self.__dict__[KubeObject.BACKING_OBJ] = Box(obj)
+        self.__dict__[KubeObject.BACKING_OBJ] = Box(obj, default_box=True)
         self.__dict__["bound"] = True
         self.__dict__["name"] = obj["metadata"]["name"]
         self.__dict__["namespace"] = obj["metadata"]["namespace"]
@@ -99,7 +105,7 @@ class KubeObject(object):
             body=self.__dict__[KubeObject.BACKING_OBJ].to_dict(),
         )
 
-        self.__dict__[KubeObject.BACKING_OBJ] = Box(obj)
+        self.__dict__[KubeObject.BACKING_OBJ] = Box(obj, default_box=True)
         self._register_update()
 
         return self
@@ -124,17 +130,26 @@ class KubeObject(object):
 
     def create(
         self,
+        namespace: Optional[str] = None,
     ) -> KubeObject:
         """Attempts to create an object using the Kubernetes API. This object needs to
         have been defined first! This is a complete metadata, spec or any other fields
         need to have been populated first."""
         api: CustomObjectsApi = self.api
 
+        if namespace is not None:
+            self.namespace = namespace
+
         obj = api.create_namespaced_custom_object(
             namespace=self.namespace,
             **self.crd,
             body=self.__dict__[KubeObject.BACKING_OBJ].to_dict(),
         )
+
+        self.__dict__[KubeObject.BACKING_OBJ] = Box(obj, default_box=True)
+        self.__dict__["bound"] = True
+        self.__dict__["name"] = obj["metadata"]["name"]
+        self.__dict__["namespace"] = obj["metadata"]["namespace"]
 
         # This object has been bound to an existing object in Kube
         self.bound = True
@@ -161,20 +176,21 @@ class KubeObject(object):
         else:
             raise ValueError("argument should be a file-like object or a dict")
 
-        self.__dict__[KubeObject.BACKING_OBJ] = Box(obj)
+        self.__dict__[KubeObject.BACKING_OBJ] = Box(obj, default_box=True)
         self.__dict__["bound"] = False
 
         return self
 
     def __setattr__(self, item, value):
-        if item.startswith("__"):
+        if item.startswith("__") or item in self.__dict__:
             self.__dict__[item] = value
         else:
             self.__dict__[KubeObject.BACKING_OBJ][item] = value
 
     def __getattr__(self, item):
-        if item not in self.__dict__[KubeObject.BACKING_OBJ]:
-            raise AttributeError(item)
+        self._reload_if_needed()
+        # if item not in self.__dict__[KubeObject.BACKING_OBJ]:
+        #     raise AttributeError(item)
 
         return getattr(self.__dict__[KubeObject.BACKING_OBJ], item)
 
@@ -186,6 +202,17 @@ class KubeObject(object):
             return d.to_dict()
 
         return d
+
+    def wait_for(self, fn):
+        while True:
+            try:
+                # Add self.reload() somehow
+                if fn(self):
+                    return True
+
+                time.sleep(4)
+            except Exception:
+                print("Funcion fails")
 
     def to_dict(self):
         return self.__dict__[KubeObject.BACKING_OBJ].to_dict()
