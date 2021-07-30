@@ -23,6 +23,10 @@ def get_version():
     return commit_tag
 
 
+packages = []
+with open("requirements.txt") as requirements:
+    packages = [r.strip() for r in requirements.readlines()]
+
 setup(
     name="kubeobject",
     version=get_version(),
@@ -34,6 +38,8 @@ setup(
 
     long_description=long_description,
     long_description_content_type="text/markdown",
+
+    install_requires=packages,
 
     packages=find_packages(),
 )
