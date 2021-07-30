@@ -1,13 +1,12 @@
 from datetime import datetime, timedelta
+from types import SimpleNamespace
+from unittest import mock
+from unittest.mock import MagicMock
 
 import pytest
 from freezegun import freeze_time
-from unittest import mock
-from unittest.mock import MagicMock
-from types import SimpleNamespace
 
 from kubeobject import CustomObject
-
 
 yaml_data0 = """
 ---
