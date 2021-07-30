@@ -1,8 +1,8 @@
 import random
 from string import ascii_lowercase, digits
 
-from .customobject import CustomObject
-from .kubeobject import KubeObject, create_custom_object
+from .customobject import CustomObject  # noqa: F401
+from .kubeobject import KubeObject, create_custom_object  # noqa: F401
 
 
 def generate_random_name(prefix="", suffix="", size=63) -> str:
