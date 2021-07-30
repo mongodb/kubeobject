@@ -34,9 +34,7 @@ def test_box2():
     k.a = "attribute a"
 
     assert k.a == "attribute a"
-
-    with pytest.raises(AttributeError):
-        assert k.b == "attribute b"
+    assert k.b.to_dict() == {}
 
     k.b = "now this works"
     assert k.b == "now this works"
@@ -44,9 +42,8 @@ def test_box2():
     k.c = {"name": "some object"}
     assert k.c.name == "some object"
 
-    # Can't access attributes before defining them
-    with pytest.raises(AttributeError):
-        assert k.d.n.m.k is None
+    # nested not yet defined attributes default to Box
+    assert k.d.n.m.k == Box()
 
     k.d = {"n": {"m": {"k": "deep value"}}}
 
@@ -68,8 +65,8 @@ def test_box3():
     proxy the call through the getter."""
     k = KubeObject("group", "version", "plural")
 
-    with pytest.raises(AttributeError):
-        # Raises because whoami is not a valid attribute
+    with pytest.raises(TypeError):
+        # Raises because the default return for empty Box is not a callable
         k.whoami()
 
     whoami = Mock(return_value="I'm you")
