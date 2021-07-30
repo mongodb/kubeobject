@@ -1,20 +1,8 @@
 import random
 from string import ascii_lowercase, digits
 
-
-from .kubeobject import KubeObject, create_custom_object
 from .customobject import CustomObject
-from .serviceaccount import ServiceAccount
-from .role import build_rules_from_yaml, Role, RoleBinding
-from .deployment import Deployment
-
-from .service import Service
-
-from .corev1api import (
-    Namespace,
-    ConfigMap,
-    Secret,
-)
+from .kubeobject import KubeObject, create_custom_object
 
 
 def generate_random_name(prefix="", suffix="", size=63) -> str:

@@ -1,16 +1,15 @@
 from __future__ import annotations
 
-import time
-import yaml
-from datetime import datetime, timedelta
-from typing import Optional, Union, TextIO
-import io
 import copy
+import io
+import time
+from datetime import datetime, timedelta
+from typing import Optional, TextIO, Union
 
+import yaml
+from box import Box
 from kubernetes import client
 from kubernetes.client.api import ApiextensionsV1Api, CustomObjectsApi
-
-from box import Box
 
 from kubeobject.exceptions import ObjectNotBoundException
 

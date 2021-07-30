@@ -1,6 +1,7 @@
 import os
 import re
-from setuptools import setup, find_packages
+
+from setuptools import find_packages, setup
 
 with open("README.md", "r") as fh:
     long_description = fh.read()
@@ -27,9 +28,9 @@ setup(
     version=get_version(),
 
     author="Rodrigo Valin",
-    author_email="licorna@gmail.com",
+    author_email="rodrigo.valin@mongodb.com",
     description="Easily Manage Kubernetes Objects.",
-    url='https://gitlab.com/licorna/kubeobject',
+    url='https://github.com/10gen/kubeobject',
 
     long_description=long_description,
     long_description_content_type="text/markdown",

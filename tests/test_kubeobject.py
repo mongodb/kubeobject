@@ -1,14 +1,13 @@
 import copy
 import io
+from unittest.mock import Mock, call, patch
 
-import yaml
 import pytest
-from unittest.mock import MagicMock, Mock, create_autospec, patch, call
+import yaml
 from box import Box
+from kubernetes import client, config
 
 from kubeobject import KubeObject, create_custom_object
-
-from kubernetes import config, client
 
 # config.load_kube_config()
 

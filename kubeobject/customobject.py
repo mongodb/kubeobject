@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-
 from datetime import datetime, timedelta
-from kubernetes import client
+
 import yaml
+from kubernetes import client
 
 
 class CustomObject:
