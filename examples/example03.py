@@ -11,7 +11,7 @@ More information is available in the README.md file in this directory.
 
 import time
 from kubernetes import config, client
-from kubeobject import KubeObject, create_custom_object
+from kubeobject import create_custom_object
 
 # We will configure our Kubernetes client using standard `kubectl`
 # configuration.

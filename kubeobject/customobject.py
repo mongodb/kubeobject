@@ -21,16 +21,17 @@ class CustomObject:
         self,
         name: str,
         namespace: str,
-        kind: str = None,
-        plural: str = None,
-        group: str = None,
-        version: str = None,
+        kind: Optional[str] = None,
+        plural: Optional[str] = None,
+        group: Optional[str] = None,
+        version: Optional[str] = None,
+        api_client: Optional[client.ApiClient] = None
     ):
         self.name = name
         self.namespace = namespace
 
-        if plural is None or kind is None or group is None or version is None:
-            # It is posible to have a CustomObject where some of the initial values are set
+        if any(value is None for value in (plural, kind, group, version)):
+            # It is possible to have a CustomObject where some of the initial values are set
             # to None. For instance when instantiating CustomObject from a yaml file (from_yaml).
             # In this case, we need to look for the rest of the parameters from the
             # apiextensions Kubernetes API.
@@ -66,7 +67,7 @@ class CustomObject:
         self.last_update: datetime = None
 
         # Sets the API used for this particular type of object
-        self.api = client.CustomObjectsApi()
+        self.api = client.CustomObjectsApi(api_client=api_client)
 
         if not hasattr(self, "backing_obj"):
             self.backing_obj = {
@@ -190,10 +191,11 @@ class CustomObject:
     def define(
         cls: CustomObject,
         name: str,
-        kind: str = None,
-        plural: str = None,
-        group: str = None,
-        version: str = None,
+        kind: Optional[str] = None,
+        plural: Optional[str] = None,
+        group: Optional[str] = None,
+        version: Optional[str] = None,
+        api_client: Optional[client.ApiClient] = None,
     ):
         """Defines a new class that will hold a particular type of object.
 
@@ -213,6 +215,7 @@ class CustomObject:
                 plural=plural,
                 group=group,
                 version=version,
+                api_client=api_client,
             )
 
         def __repr__(self):
