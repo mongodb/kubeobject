@@ -1,3 +1,6 @@
+import os
+import re
+
 from setuptools import find_packages, setup
 
 with open("README.md", "r") as fh:
@@ -8,9 +11,13 @@ packages = []
 with open("requirements.txt") as requirements:
     packages = [r.strip() for r in requirements.readlines()]
 
+release_version = os.environ['RELEASE_VERSION'].strip()
+if not re.match(r'^\d{1,2}\.\d{1,2}\.\d{1,2}$', release_version):
+    raise ValueError("TAG should be x.y.z")
+
 setup(
     name="kubeobject",
-    version="0.2.0",
+    version=release_version,
 
     author="Rodrigo Valin",
     author_email="rodrigo.valin@mongodb.com",

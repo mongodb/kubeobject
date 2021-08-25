@@ -16,6 +16,10 @@ jobs:
       with:
         python-version: 3.9
 
+    - name: Get tag
+      id: get_tag
+      run: echo ::set-output name=TAG::${GITHUB_REF#refs/tags/}
+
     - name: Install pypa/build
       run: >-
         python -m
@@ -24,6 +28,8 @@ jobs:
         --user
 
     - name: Build a binary wheel and a source tarball
+      env:
+        RELEASE_VERSION: ${{ steps.get_tag.outputs.TAG }}
       run: >-
         python -m
         build
