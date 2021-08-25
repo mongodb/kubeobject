@@ -211,7 +211,7 @@ class KubeObject(object):
 
                 time.sleep(4)
             except Exception:
-                print("Funcion fails")
+                print("Function fails")
 
     def to_dict(self):
         return self.__dict__[KubeObject.BACKING_OBJ].to_dict()
