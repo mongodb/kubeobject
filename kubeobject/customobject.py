@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta
-from typing import Optional
+from typing import Optional, Dict
 
 import yaml
 from kubernetes import client
@@ -25,7 +25,7 @@ class CustomObject:
         plural: Optional[str] = None,
         group: Optional[str] = None,
         version: Optional[str] = None,
-        api_client: Optional[client.ApiClient] = None
+        api_client: Optional[client.ApiClient] = None,
     ):
         self.name = name
         self.namespace = namespace
@@ -35,7 +35,13 @@ class CustomObject:
             # to None. For instance when instantiating CustomObject from a yaml file (from_yaml).
             # In this case, we need to look for the rest of the parameters from the
             # apiextensions Kubernetes API.
-            crd = get_crd_names(plural=plural, kind=kind, group=group, version=version)
+            crd = get_crd_names(
+                plural=plural,
+                kind=kind,
+                group=group,
+                version=version,
+                api_client=api_client,
+            )
             self.kind = crd.spec.names.kind
             self.plural = crd.spec.names.plural
             self.group = crd.spec.group
@@ -237,10 +243,9 @@ class CustomObject:
 
     def delete(self):
         """Deletes the object from Kubernetes."""
-        api = client.CustomObjectsApi()
         body = client.V1DeleteOptions()
 
-        api.delete_namespaced_custom_object(
+        self.api.delete_namespaced_custom_object(
             self.group, self.version, self.namespace, self.plural, self.name, body=body
         )
 
@@ -266,12 +271,18 @@ class CustomObject:
             self.update()
 
 
-def get_crd_names(plural=None, kind=None, group=None, version=None) -> Optional[dict]:
+def get_crd_names(
+    plural: Optional[str] = None,
+    kind: Optional[str] = None,
+    group: Optional[str] = None,
+    version: Optional[str] = None,
+    api_client: Optional[client.ApiClient] = None,
+) -> Optional[Dict]:
     """Gets the CRD entry that matches all the parameters passed."""
     #
     # TODO: Update to `client.ApiextensionsV1Api()`
     #
-    api = client.ApiextensionsV1beta1Api()
+    api = client.ApiextensionsV1beta1Api(api_client=api_client)
 
     if plural == kind == group == version is None:
         return None
