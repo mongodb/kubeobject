@@ -232,7 +232,7 @@ def create_custom_object(name: str, api=None) -> KubeObject:
 
 def full_crd_name(
     name: str, api: Optional[ApiextensionsV1Api] = None
-) -> Tuple[str, str, str, str, str]:
+) -> Tuple[str, str, str, str]:
     """Fetches this CRD from the kubernetes API by name and returns its
     name, kind, plural, group and version."""
     if api is None:
@@ -247,4 +247,4 @@ def full_crd_name(
     plural = response.spec.names.plural
     version = [v.name for v in response.spec.versions if v.served][0]
 
-    return (kind, plural, group, version)
+    return kind, plural, group, version
