@@ -16,7 +16,13 @@ jobs:
       with:
         python-version: 3.9
 
+    - name: Get tag
+      id: get_tag
+      run: echo ::set-output name=TAG::${GITHUB_REF#refs/tags/}
+
     - name: Install pypa/build
+      env:
+        RELEASE_VERSION: ${{ steps.get_tag.outputs.TAG }}
       run: >-
         python -m
         pip install

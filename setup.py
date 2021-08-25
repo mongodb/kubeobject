@@ -1,3 +1,5 @@
+import os
+
 from setuptools import find_packages, setup
 
 with open("README.md", "r") as fh:
@@ -10,7 +12,7 @@ with open("requirements.txt") as requirements:
 
 setup(
     name="kubeobject",
-    version="0.2.0",
+    version=os.environ['RELEASE_VERSION'],
 
     author="Rodrigo Valin",
     author_email="rodrigo.valin@mongodb.com",
