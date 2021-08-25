@@ -1,4 +1,4 @@
-name: Publish Python Distro to Test PyPi
+name: Publish Python Package to PyPi
 
 on: push
 
@@ -32,7 +32,7 @@ jobs:
         --outdir dist/
         .
 
-    - name: Publish to Test PY
+    - name: Publish to pypi
       uses: pypa/gh-action-pypi-publish@master
       with:
         password: ${{ secrets.PYPI_API_TOKEN }}
